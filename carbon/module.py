@@ -1,5 +1,16 @@
 from collections import OrderedDict
-from typing import Callable, List, Set, Tuple, Type
+from typing import Callable, List, Set, Tuple, Type, overload
+
+
+class ModuleReference:
+    """A reference to a module in the tree."""
+
+    def __init__(self, module: "Module"):
+        self._module = module
+
+    @property
+    def module(self):
+        return self._module
 
 
 class Tree:
@@ -42,10 +53,31 @@ class Module:
             if callable(attribute) and hasattr(attribute, "_sinks"):
                 self._sinks[attribute] = getattr(attribute, "_sinks")
 
-    def __repr__(self):
+    def to_reference(self) -> ModuleReference:
+        """Convert the module to a reference."""
+        return ModuleReference(self)
+
+    def __getattr__(self, name):
+        if name in self._modules:
+            return self._modules[name]
+        raise AttributeError(
+            f"'{self.__class__.__name__}' object has no attribute '{name}'"
+        )
+
+    def __repr__(self, memo=None):
+        if memo is None:
+            memo = set()
+
+        # Avoid infinite recursion by checking if the module is already visited
+        if self in memo:
+            return f"<{self.__class__.__name__} (circular reference)>"
+
+        memo.add(self)
         child_lines = []
+
         for key, module in self._modules.items():
-            module_string = repr(module)
+            # Get the string representation of the module
+            module_string = module.__repr__(memo)
             module_string = _addindent(module_string, 2)
             child_lines.append("(" + key + "): " + module_string)
 
@@ -56,40 +88,61 @@ class Module:
         main_str += ")"
         return main_str
 
-    def get_sources(self, recursive: bool = False):
+    def get_sources(self, recursive: bool = False, memo: Set = None):
         """Get sources of the module and its immediate children if recursive is False,
         or all sources in the tree if recursive is True."""
         if not recursive:
             return self._sources
 
+        if memo is None:
+            memo = set()
         sources = self._sources.copy()
         for module in self._modules.values():
-            module_sources = module.get_sources(recursive=True)
+            # Avoid infinite recursion
+            if module in memo:
+                continue
+            memo.add(module)
+            # Get sources from the module
+            module_sources = module.get_sources(recursive=True, memo=memo)
             sources.update(module_sources)
         return sources
 
-    def get_sinks(self, recursive: bool = False):
+    def get_sinks(self, recursive: bool = False, memo: Set = None):
         """Get sinks of the module and its immediate children if recursive is False,
         or all sinks in the tree if recursive is True."""
         if not recursive:
             return self._sinks
 
+        if memo is None:
+            memo = set()
         sinks = self._sinks.copy()
         for module in self._modules.values():
-            module_sinks = module.get_sinks(recursive=True)
+            # Avoid infinite recursion
+            if module in memo:
+                continue
+            memo.add(module)
+            # Get sinks from the module
+            module_sinks = module.get_sinks(recursive=True, memo=memo)
             sinks.update(module_sinks)
         return sinks
 
-    def get_connections(self, recursive: bool = True):
+    def get_connections(self, recursive: bool = True, memo: Set = None):
         """Get connections of the module if recursive is False,
         or all connections in the tree if recursive is True."""
 
         if not recursive:
             return self._connections
 
+        if memo is None:
+            memo = set()
         connections = self._connections.copy()
         for module in self._modules.values():
-            module_connections = module.get_connections(recursive=True)
+            # Avoid infinite recursion
+            if module in memo:
+                continue
+            memo.add(module)
+            # Get connections from the module
+            module_connections = module.get_connections(recursive=True, memo=memo)
             connections.update(module_connections)
         return connections
 
@@ -159,9 +212,17 @@ class Module:
     #     else:
     #         raise TypeError("Provided source is neither a callable nor a module")
 
+    @overload
+    def _get_source_path_from_type(
+        self, source: "Module", message_type: Type
+    ) -> Callable: ...
+    @overload
+    def _get_source_path_from_type(
+        self, source: Callable, message_type: Type
+    ) -> Callable: ...
     def _get_source_path_from_type(
         self, source: "Module" | Callable, message_type: Type
-    ):
+    ) -> Callable:
         """Get the source path from a source and its type."""
         if type(message_type) is not tuple:
             message_type = (message_type,)
@@ -194,7 +255,17 @@ class Module:
         else:
             raise TypeError("Provided source is neither a callable nor a module")
 
-    def _get_sink_path_from_type(self, sink: "Module" | Callable, message_type: Type):
+    @overload
+    def _get_sink_path_from_type(
+        self, sink: "Module", message_type: Type
+    ) -> Callable: ...
+    @overload
+    def _get_sink_path_from_type(
+        self, sink: Callable, message_type: Type
+    ) -> Callable: ...
+    def _get_sink_path_from_type(
+        self, sink: "Module" | Callable, message_type: Type
+    ) -> Callable:
         """Get the sink path from a sink and its type."""
         if type(message_type) is not tuple:
             message_type = (message_type,)
@@ -228,8 +299,11 @@ class Module:
             raise TypeError("Provided sink is neither a callable nor a module")
 
     def create_one_to_one_connection(
-        self, source: "Module" | Callable, sink: "Module" | Callable, message_type: Type
-    ):
+        self,
+        source: "Module" | Callable,
+        sink: "Module" | Callable,
+        message_type: Type | Tuple[Type, ...],
+    ) -> None:
         """Create a one-to-one connection between a source and a sink."""
 
         source_path = self._get_source_path_from_type(source, message_type)
@@ -242,7 +316,7 @@ class Module:
     def create_one_to_many_connection(
         self,
         source: "Module" | Callable,
-        sink: Tuple["Module"] | Tuple[Callable, ...],
+        sink: Tuple["Module", ...] | Tuple[Callable, ...],
         message_type: Tuple[Type, ...],
     ):
         """Create a one-to-many connection between a source and multiple sinks."""
@@ -264,10 +338,10 @@ class Module:
 
     def create_many_to_one_connection(
         self,
-        source: Tuple["Module"] | Tuple[Callable, ...],
+        source: Tuple["Module", ...] | Tuple[Callable, ...],
         sink: "Module" | Callable,
         message_type: Tuple[Type, ...],
-    ):
+    ) -> None:
         """Create a many-to-one connection between multiple sources and a sink."""
         if len(source) != len(message_type):
             raise ValueError("Number of sources must match the number of types")

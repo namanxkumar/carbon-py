@@ -22,24 +22,20 @@ class WheelBase(Module):
     def __init__(self):
         super().__init__()
 
-        self.chassis = RectangularLink()
         self.left_wheel = Wheel()
-        self.left_motor = ContinuousJoint(name="left_motor")
+        self.left_motor = ContinuousJoint(
+            parent=self.to_reference(), child=self.left_wheel.to_reference()
+        )
+
         self.right_wheel = Wheel()
-        self.right_motor = ContinuousJoint(name="right_motor")
-
-        self.create_joint(
-            joint=self.right_motor, parent=self.chassis, child=self.right_wheel
-        )
-        self.create_joint(
-            joint=self.left_motor, parent=self.chassis, child=self.left_wheel
+        self.right_motor = ContinuousJoint(
+            parent=self.to_reference(), child=self.right_wheel.to_reference()
         )
 
-        self.driver = KangarooDriver(
-            left_actuator=self.left_motor, right_actuator=self.right_motor
-        )
+        self.driver = KangarooDriver()
         self.controller = DifferentialDriveController(
-            left_motor=self.left_motor, right_motor=self.right_motor
+            left_motor=self.left_motor.to_reference(),
+            right_motor=self.right_motor.to_reference(),
         )
 
         self.create_one_to_one_connection(

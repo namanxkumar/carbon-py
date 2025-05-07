@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from .module import Module, sink
+from .module import Module, ModuleReference, sink
 
 
 @dataclass
@@ -10,15 +10,14 @@ class JointState:
 
 
 class ContinuousJoint(Module):
-    def __init__(self, parent: Module = None, child: Module = None, name=None):
+    def __init__(self, parent: ModuleReference, child: ModuleReference):
         super().__init__()
         self.parent = parent
         self.child = child
-        self.name = name
 
     @sink(JointState)
     def update_state(self):
-        print(self.name)
+        pass
 
     def _update_child(self):
         pass

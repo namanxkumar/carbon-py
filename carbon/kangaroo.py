@@ -12,8 +12,14 @@ class KangarooCommand:
 
 
 class KangarooDriver(Module):
-    def __init__(self, left_actuator: Module, right_actuator: Module):
+    def __init__(self):
         super().__init__()
+
+        # self.create_many_to_one_connection(
+        #     (left_actuator, right_actuator),
+        #     self.send_drive_commands,
+        #     (JointState, JointState),
+        # )
 
     @sink(JointState, JointState)
     def send_drive_commands(self, command: Tuple[JointState, JointState]):
