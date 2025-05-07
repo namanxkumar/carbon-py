@@ -1,5 +1,5 @@
 from collections import OrderedDict
-from typing import Callable, List, Set, Tuple, Type, overload
+from typing import Callable, List, Set, Tuple, Type
 
 
 class ModuleReference:
@@ -88,7 +88,9 @@ class Module:
         main_str += ")"
         return main_str
 
-    def get_sources(self, recursive: bool = False, memo: Set = None):
+    def get_sources(
+        self, recursive: bool = False, memo: Set = None
+    ) -> OrderedDict[Callable, Tuple[Type, ...]]:
         """Get sources of the module and its immediate children if recursive is False,
         or all sources in the tree if recursive is True."""
         if not recursive:
@@ -107,7 +109,9 @@ class Module:
             sources.update(module_sources)
         return sources
 
-    def get_sinks(self, recursive: bool = False, memo: Set = None):
+    def get_sinks(
+        self, recursive: bool = False, memo: Set = None
+    ) -> OrderedDict[Callable, Tuple[Type, ...]]:
         """Get sinks of the module and its immediate children if recursive is False,
         or all sinks in the tree if recursive is True."""
         if not recursive:
@@ -126,7 +130,7 @@ class Module:
             sinks.update(module_sinks)
         return sinks
 
-    def get_connections(self, recursive: bool = True, memo: Set = None):
+    def get_connections(self, recursive: bool = True, memo: Set = None) -> Set[Tuple]:
         """Get connections of the module if recursive is False,
         or all connections in the tree if recursive is True."""
 
@@ -212,14 +216,6 @@ class Module:
     #     else:
     #         raise TypeError("Provided source is neither a callable nor a module")
 
-    @overload
-    def _get_source_path_from_type(
-        self, source: "Module", message_type: Type
-    ) -> Callable: ...
-    @overload
-    def _get_source_path_from_type(
-        self, source: Callable, message_type: Type
-    ) -> Callable: ...
     def _get_source_path_from_type(
         self, source: "Module" | Callable, message_type: Type
     ) -> Callable:
@@ -255,14 +251,6 @@ class Module:
         else:
             raise TypeError("Provided source is neither a callable nor a module")
 
-    @overload
-    def _get_sink_path_from_type(
-        self, sink: "Module", message_type: Type
-    ) -> Callable: ...
-    @overload
-    def _get_sink_path_from_type(
-        self, sink: Callable, message_type: Type
-    ) -> Callable: ...
     def _get_sink_path_from_type(
         self, sink: "Module" | Callable, message_type: Type
     ) -> Callable:
@@ -311,7 +299,12 @@ class Module:
         sink_path = self._get_sink_path_from_type(sink, message_type)
 
         # Create the connection
-        self._connections.add((source_path, sink_path))
+        connection = (source_path, sink_path)
+        if connection in self.get_connections(recursive=True):
+            raise ValueError(
+                f"Connection already exists between {source_path} and {sink_path}"
+            )
+        self._connections.add(connection)
 
     def create_one_to_many_connection(
         self,
@@ -334,7 +327,12 @@ class Module:
             raise TypeError("Provided sinks must be a list or tuple")
 
         # Create the connection
-        self._connections.add((source_path, tuple(sink_paths)))
+        connection = (source_path, tuple(sink_paths))
+        if connection in self.get_connections(recursive=True):
+            raise ValueError(
+                f"Connection already exists between {source_path} and {sink_path}"
+            )
+        self._connections.add(connection)
 
     def create_many_to_one_connection(
         self,
@@ -357,7 +355,12 @@ class Module:
             raise TypeError("Provided sources must be a list or tuple")
 
         # Create the connection
-        self._connections.add((tuple(source_paths), sink_path))
+        connection = (tuple(source_paths), sink_path)
+        if connection in self.get_connections(recursive=True):
+            raise ValueError(
+                f"Connection already exists between {source_paths} and {sink_path}"
+            )
+        self._connections.add(connection)
 
     def create_joint(self, *args, **kwargs):
         pass
