@@ -15,10 +15,14 @@ class DifferentialDriveController(Module):
     def __init__(self, left_motor: Module, right_motor: Module):
         super().__init__()
 
-        self.create_connection(self.create_motor_commands, (left_motor, right_motor))
+        self.create_one_to_many_connection(
+            self.create_motor_commands,
+            (left_motor, right_motor),
+            (JointState, JointState),
+        )
 
     @sink(TeleopCommand)
-    @source(Tuple[JointState, JointState])
+    @source(JointState, JointState)
     def create_motor_commands(
         self, command: TeleopCommand
     ) -> Tuple[JointState, JointState]:

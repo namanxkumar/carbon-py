@@ -2,7 +2,7 @@ from carbon.differential_drive_controller import (
     DifferentialDriveController,
     TeleopCommand,
 )
-from carbon.joint import ContinuousJoint
+from carbon.joint import ContinuousJoint, JointState
 from carbon.kangaroo import KangarooDriver
 from carbon.module import Module, source
 
@@ -16,11 +16,6 @@ class Wheel(Module):
 class RectangularLink(Module):
     def __init__(self):
         super().__init__()
-
-    @source(int)
-    def test(self):
-        # This is a test function
-        pass
 
 
 class WheelBase(Module):
@@ -47,6 +42,10 @@ class WheelBase(Module):
             left_motor=self.left_motor, right_motor=self.right_motor
         )
 
+        self.create_one_to_one_connection(
+            self.controller, self.driver, (JointState, JointState)
+        )
+
 
 class Teleop(Module):
     @source(TeleopCommand)
@@ -55,8 +54,18 @@ class Teleop(Module):
         pass
 
 
-wheelbase = WheelBase()
-teleop = Teleop()
+class Robot(Module):
+    def __init__(self):
+        super().__init__()
+        self.wheelbase = WheelBase()
+        self.teleop = Teleop()
+
+        self.create_one_to_one_connection(
+            self.teleop, self.wheelbase.controller, TeleopCommand
+        )
+
+
+robot = Robot()
 
 
 def pretty_print_ordered_dict(od, indent=0):
@@ -68,10 +77,11 @@ def pretty_print_ordered_dict(od, indent=0):
             print(" " * indent + f"{key}: {value}")
 
 
-print("Sources:")
-pretty_print_ordered_dict(wheelbase.get_sources())
+print(robot)
+print("\nSources:")
+pretty_print_ordered_dict(robot.get_sources(recursive=True))
 print("\nSinks:")
-pretty_print_ordered_dict(wheelbase.get_sinks())
+pretty_print_ordered_dict(robot.get_sinks(recursive=True))
 print("\nConnections:")
-for i in wheelbase._connections:
+for i in robot.get_connections():
     print(i)
