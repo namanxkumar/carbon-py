@@ -43,7 +43,18 @@ class Module:
         self._sinks: OrderedDict[Callable, Tuple[Type, ...]] = OrderedDict()
         self._sources: OrderedDict[Callable, Tuple[Type, ...]] = OrderedDict()
         self._connections: Set[
-            Tuple[Callable | Tuple[Callable, ...], Callable | Tuple[Callable, ...]]
+            Tuple[
+                Callable | Tuple[Callable, ...],
+                Callable | Tuple[Callable, ...],
+                Tuple[Type, ...],
+            ]
+        ] = set()
+        self._blocked_connections: Set[
+            Tuple[
+                Callable | Tuple[Callable, ...],
+                Callable | Tuple[Callable, ...],
+                Tuple[Type, ...],
+            ]
         ] = set()
 
         # Collect sources and sinks
@@ -133,7 +144,13 @@ class Module:
 
     def get_connections(
         self, recursive: bool = True, memo: Set = None
-    ) -> Set[Tuple[Callable | Tuple[Callable, ...], Callable | Tuple[Callable, ...]]]:
+    ) -> Set[
+        Tuple[
+            Callable | Tuple[Callable, ...],
+            Callable | Tuple[Callable, ...],
+            Tuple[Type, ...],
+        ]
+    ]:
         """Get connections of the module if recursive is False,
         or all connections in the tree if recursive is True."""
 
@@ -151,7 +168,7 @@ class Module:
             # Get connections from the module
             module_connections = module.get_connections(recursive=True, memo=memo)
             connections.update(module_connections)
-        return connections
+        return connections - self._blocked_connections
 
     def __setattr__(self, name, value):
         if isinstance(value, Module):
@@ -241,13 +258,15 @@ class Module:
     def _validate_connection(
         self,
         connection: Tuple[
-            Callable | Tuple[Callable, ...], Callable | Tuple[Callable, ...]
+            Callable | Tuple[Callable, ...],
+            Callable | Tuple[Callable, ...],
+            Tuple[Type, ...],
         ],
     ):
-        source_path, sink_path = connection
+        source_path, sink_path, _ = connection
         existing_connections = self.get_connections(recursive=True)
         for existing_connection in existing_connections:
-            existing_source, existing_sink = existing_connection
+            existing_source, existing_sink, _ = existing_connection
             if sink_path == existing_sink:
                 raise ValueError(
                     f"Sink {sink_path} is already connected to another source {existing_source}"
@@ -274,8 +293,11 @@ class Module:
 
         sink_path = self._get_sink_path_from_type(sink, message_type)
 
+        if type(message_type) is not tuple:
+            message_type = (message_type,)
+
         # Create the connection
-        connection = (source_path, sink_path)
+        connection = (source_path, sink_path, message_type)
         self._validate_connection(connection)
         self._connections.add(connection)
 
@@ -291,16 +313,19 @@ class Module:
 
         source_path = self._get_source_path_from_type(source, message_type)
 
-        if isinstance(sink, (list, tuple)):
+        if isinstance(sink, tuple):
             sink_paths = []
             for s, t in zip(sink, message_type):
                 sink_path = self._get_sink_path_from_type(s, t)
                 sink_paths.append(sink_path)
         else:
-            raise TypeError("Provided sinks must be a list or tuple")
+            raise TypeError("Provided sinks must be a tuple")
+
+        if type(message_type) is not tuple:
+            message_type = (message_type,)
 
         # Create the connection
-        connection = (source_path, tuple(sink_paths))
+        connection = (source_path, tuple(sink_paths), message_type)
         self._validate_connection(connection)
         self._connections.add(connection)
 
@@ -316,18 +341,98 @@ class Module:
 
         sink_path = self._get_sink_path_from_type(sink, message_type)
 
-        if isinstance(source, (list, tuple)):
+        if isinstance(source, tuple):
             source_paths = []
             for s, t in zip(source, message_type):
                 source_path = self._get_source_path_from_type(s, t)
                 source_paths.append(source_path)
         else:
-            raise TypeError("Provided sources must be a list or tuple")
+            raise TypeError("Provided sources must be a tuple")
+
+        if type(message_type) is not tuple:
+            message_type = (message_type,)
 
         # Create the connection
-        connection = (tuple(source_paths), sink_path)
+        connection = (tuple(source_paths), sink_path, message_type)
         self._validate_connection(connection)
         self._connections.add(connection)
+
+    def block_connection(
+        self,
+        source: "Module"
+        | Callable
+        | Tuple[Callable, ...]
+        | Tuple["Module", ...]
+        | None,
+        sink: "Module" | Callable | Tuple[Callable, ...] | Tuple["Module", ...] | None,
+        message_type: Type | Tuple[Type, ...],
+    ):
+        """Block a connection between a source and a sink."""
+        # If connection is many to many
+        if isinstance(source, tuple) and isinstance(sink, tuple):
+            raise ValueError("Source and Sink cannot be both tuples.")
+
+        if source is None:
+            source_path = None
+        elif isinstance(source, tuple):
+            source_paths = []
+            for s, t in zip(source, message_type):
+                source_path = self._get_source_path_from_type(s, t)
+                source_paths.append(source_path)
+            source_path = tuple(source_paths)
+        else:
+            source_path = self._get_source_path_from_type(source, message_type)
+
+        if sink is None:
+            sink_path = None
+        elif isinstance(sink, tuple):
+            sink_paths = []
+            for s, t in zip(sink, message_type):
+                sink_path = self._get_sink_path_from_type(s, t)
+                sink_paths.append(sink_path)
+            sink_path = tuple(sink_paths)
+        else:
+            sink_path = self._get_sink_path_from_type(sink, message_type)
+
+        if type(message_type) is not tuple:
+            message_type = (message_type,)
+
+        print(source_path, sink_path, message_type)
+
+        # Remove the connection
+        for existing_connection in self.get_connections(recursive=True):
+            existing_source, existing_sink, existing_type = existing_connection
+            removal = False
+            if (
+                source_path is None
+                and source_path is None
+                and message_type == existing_type
+            ):
+                removal = True
+
+            if (
+                source_path is None
+                and existing_sink == sink_path
+                and message_type == existing_type
+            ):
+                removal = True
+
+            if (
+                sink_path is None
+                and existing_source == source_path
+                and message_type == existing_type
+            ):
+                removal = True
+
+            if (
+                source_path == existing_source
+                and sink_path == existing_sink
+                and message_type == existing_type
+            ):
+                removal = True
+
+            if removal:
+                self._blocked_connections.add(existing_connection)
 
     def create_joint(self, *args, **kwargs):
         pass

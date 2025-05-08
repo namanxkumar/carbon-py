@@ -37,9 +37,13 @@ class WheelBase(Module):
             left_actuator=self.left_motor.as_reference(),
             right_actuator=self.right_motor.as_reference(),
         )
+
+        self.block_connection(self.driver, None, (JointState, JointState))
+
         self.controller = DifferentialDriveController(
             left_motor=self.left_motor.as_reference(),
             right_motor=self.right_motor.as_reference(),
+            update_motor_states=True,
         )
 
         self.create_one_to_one_connection(

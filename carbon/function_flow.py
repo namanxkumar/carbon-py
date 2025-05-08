@@ -8,6 +8,8 @@ class FunctionNode:
     def __init__(self, function: Callable):
         self.name = function.__name__
         self.function = function
+        self.sink_type = None  # Type of the sink
+        self.source_type = None
         self.dependencies: List[FunctionNode] = []  # Functions that feed into this one
         self.dependents: List[FunctionNode] = []  # Functions that this one feeds into
         self.result = None  # Stores the last execution result
@@ -70,7 +72,7 @@ class FunctionFlow:
     ):
         """Build the function flow from a list of tuples."""
         for connection in connections:
-            source, sink = connection
+            source, sink, _ = connection
             self._connect(source, sink)
 
         # After building all connections, compute execution order
