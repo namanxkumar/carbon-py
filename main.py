@@ -2,6 +2,7 @@ from carbon.differential_drive_controller import (
     DifferentialDriveController,
     TeleopCommand,
 )
+from carbon.function_flow import FunctionFlow
 from carbon.joint import ContinuousJoint, JointState
 from carbon.kangaroo import KangarooDriver
 from carbon.module import Module, source
@@ -24,18 +25,21 @@ class WheelBase(Module):
 
         self.left_wheel = Wheel()
         self.left_motor = ContinuousJoint(
-            parent=self.to_reference(), child=self.left_wheel.to_reference()
+            parent=self.as_reference(), child=self.left_wheel.as_reference()
         )
 
         self.right_wheel = Wheel()
         self.right_motor = ContinuousJoint(
-            parent=self.to_reference(), child=self.right_wheel.to_reference()
+            parent=self.as_reference(), child=self.right_wheel.as_reference()
         )
 
-        self.driver = KangarooDriver()
+        self.driver = KangarooDriver(
+            left_actuator=self.left_motor.as_reference(),
+            right_actuator=self.right_motor.as_reference(),
+        )
         self.controller = DifferentialDriveController(
-            left_motor=self.left_motor.to_reference(),
-            right_motor=self.right_motor.to_reference(),
+            left_motor=self.left_motor.as_reference(),
+            right_motor=self.right_motor.as_reference(),
         )
 
         self.create_one_to_one_connection(
@@ -79,5 +83,21 @@ pretty_print_ordered_dict(robot.get_sources(recursive=True))
 print("\nSinks:")
 pretty_print_ordered_dict(robot.get_sinks(recursive=True))
 print("\nConnections:")
-for i in robot.get_connections():
+connections = list(robot.get_connections())
+for i in connections:
     print(i)
+
+flow = FunctionFlow()
+flow.build_from_tuples(connections)
+
+print("\nFunction Flow:")
+pretty_print_ordered_dict(flow.nodes)
+print("\nExecution Order:")
+for index, layer in enumerate(flow.execution_order):
+    print(
+        index + 1,
+        list(
+            f"{flow.nodes[node_id].function.__self__}.{flow.nodes[node_id].name}"
+            for node_id in layer
+        ),
+    )

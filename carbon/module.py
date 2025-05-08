@@ -39,11 +39,12 @@ def _addindent(s_: str, numSpaces: int):
 
 class Module:
     def __init__(self):
-        self._tree = Tree()
         self._modules: OrderedDict[str, Module] = OrderedDict()
         self._sinks: OrderedDict[Callable, Tuple[Type, ...]] = OrderedDict()
         self._sources: OrderedDict[Callable, Tuple[Type, ...]] = OrderedDict()
-        self._connections: Set[Tuple] = set()
+        self._connections: Set[
+            Tuple[Callable | Tuple[Callable, ...], Callable | Tuple[Callable, ...]]
+        ] = set()
 
         # Collect sources and sinks
         for attribute_name in dir(self):
@@ -53,7 +54,7 @@ class Module:
             if callable(attribute) and hasattr(attribute, "_sinks"):
                 self._sinks[attribute] = getattr(attribute, "_sinks")
 
-    def to_reference(self) -> ModuleReference:
+    def as_reference(self) -> ModuleReference:
         """Convert the module to a reference."""
         return ModuleReference(self)
 
@@ -130,7 +131,9 @@ class Module:
             sinks.update(module_sinks)
         return sinks
 
-    def get_connections(self, recursive: bool = True, memo: Set = None) -> Set[Tuple]:
+    def get_connections(
+        self, recursive: bool = True, memo: Set = None
+    ) -> Set[Tuple[Callable | Tuple[Callable, ...], Callable | Tuple[Callable, ...]]]:
         """Get connections of the module if recursive is False,
         or all connections in the tree if recursive is True."""
 
@@ -152,69 +155,18 @@ class Module:
 
     def __setattr__(self, name, value):
         if isinstance(value, Module):
-            # # Create connections before adding the module
-            # module_sources = value._sources
-            # module_sinks = value._sinks
-
-            # for source_path, source_type in module_sources.items():
-            #     self._create_connections_from_source(source_path, source_type)
-
-            # for sink_path, sink_type in module_sinks.items():
-            #     self._create_connections_from_sink(sink_path, sink_type)
-
+            module_connections = value.get_connections(recursive=True)
+            for connection in module_connections:
+                try:
+                    self._validate_connection(connection)
+                except Exception as e:
+                    raise ValueError(
+                        f"Invalid connection {connection} in module {self.__class__.__name__}"
+                    ) from e
             self._modules[name] = value
-            value._tree._root = self
             super().__setattr__(name, value)
         else:
             super().__setattr__(name, value)
-
-    @property
-    def tree(self):
-        return self._tree
-
-    # def _create_connections_from_sink(self, sink: Callable, sink_type: Type):
-    #     """Create connections from a sink to all sources of the module that produce the sink type."""
-    #     for source, source_type in self.get_sources().items():
-    #         if source_type == sink_type:
-    #             self._connections.add((source, sink))
-
-    # def _create_connections_from_source(self, source: Callable, source_type: Type):
-    #     """Create connections from a source to all sinks of the module that consume the source type."""
-    #     for sink, sink_type in self.get_sinks().items():
-    #         if sink_type == source_type:
-    #             self._connections.add((source, sink))
-
-    # def expose_sink(self, sink: Callable | "Module"):
-    #     """Expose a child sink to the module tree."""
-    #     if isinstance(sink, Callable):
-    #         assert hasattr(sink, "_sinks"), "Provided method is not a sink"
-
-    #         sink_type = getattr(sink, "_sinks")
-    #         self._create_connections_from_sink(sink, sink_type)
-    #         self._sinks[sink] = sink_type
-    #     elif isinstance(sink, Module):
-    #         # If sink is a module, expose all its sinks
-    #         for sink_path, sink_type in sink._sinks.items():
-    #             self._create_connections_from_sink(sink_path, sink_type)
-    #             self._sinks[sink_path] = sink_type
-    #     else:
-    #         raise TypeError("Provided sink is neither a callable nor a module")
-
-    # def expose_source(self, source: Callable | "Module"):
-    #     """Expose a child source to the module tree."""
-    #     if isinstance(source, Callable):
-    #         assert hasattr(source, "_sources"), "Provided method is not a source"
-
-    #         source_type = getattr(source, "_sources")
-    #         self._create_connections_from_source(source, source_type)
-    #         self._sources[source] = source_type
-    #     elif isinstance(source, Module):
-    #         # If source is a module, expose all its sources
-    #         for source_path, source_type in source._sources.items():
-    #             self._create_connections_from_source(source_path, source_type)
-    #             self._sources[source_path] = source_type
-    #     else:
-    #         raise TypeError("Provided source is neither a callable nor a module")
 
     def _get_source_path_from_type(
         self, source: "Module" | Callable, message_type: Type
@@ -286,6 +238,30 @@ class Module:
         else:
             raise TypeError("Provided sink is neither a callable nor a module")
 
+    def _validate_connection(
+        self,
+        connection: Tuple[
+            Callable | Tuple[Callable, ...], Callable | Tuple[Callable, ...]
+        ],
+    ):
+        source_path, sink_path = connection
+        existing_connections = self.get_connections(recursive=True)
+        for existing_connection in existing_connections:
+            existing_source, existing_sink = existing_connection
+            if sink_path == existing_sink:
+                raise ValueError(
+                    f"Sink {sink_path} is already connected to another source {existing_source}"
+                )
+            if isinstance(existing_sink, tuple):
+                if sink_path in existing_sink:
+                    raise ValueError(
+                        f"Sink {sink_path} is already connected to another source {existing_source}"
+                    )
+            if existing_connection == connection:
+                raise ValueError(
+                    f"Connection already exists between {source_path} and {sink_path}"
+                )
+
     def create_one_to_one_connection(
         self,
         source: "Module" | Callable,
@@ -300,10 +276,7 @@ class Module:
 
         # Create the connection
         connection = (source_path, sink_path)
-        if connection in self.get_connections(recursive=True):
-            raise ValueError(
-                f"Connection already exists between {source_path} and {sink_path}"
-            )
+        self._validate_connection(connection)
         self._connections.add(connection)
 
     def create_one_to_many_connection(
@@ -328,10 +301,7 @@ class Module:
 
         # Create the connection
         connection = (source_path, tuple(sink_paths))
-        if connection in self.get_connections(recursive=True):
-            raise ValueError(
-                f"Connection already exists between {source_path} and {sink_path}"
-            )
+        self._validate_connection(connection)
         self._connections.add(connection)
 
     def create_many_to_one_connection(
@@ -356,10 +326,7 @@ class Module:
 
         # Create the connection
         connection = (tuple(source_paths), sink_path)
-        if connection in self.get_connections(recursive=True):
-            raise ValueError(
-                f"Connection already exists between {source_paths} and {sink_path}"
-            )
+        self._validate_connection(connection)
         self._connections.add(connection)
 
     def create_joint(self, *args, **kwargs):

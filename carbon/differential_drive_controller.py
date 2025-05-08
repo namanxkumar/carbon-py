@@ -12,14 +12,20 @@ class TeleopCommand:
 
 
 class DifferentialDriveController(Module):
-    def __init__(self, left_motor: ModuleReference, right_motor: ModuleReference):
+    def __init__(
+        self,
+        left_motor: ModuleReference,
+        right_motor: ModuleReference,
+        update_motor_states: bool = False,
+    ):
         super().__init__()
 
-        self.create_one_to_many_connection(
-            self.create_motor_commands,
-            (left_motor.module, right_motor.module),
-            (JointState, JointState),
-        )
+        if update_motor_states:
+            self.create_one_to_many_connection(
+                self.create_motor_commands,
+                (left_motor.module, right_motor.module),
+                (JointState, JointState),
+            )
 
     @sink(TeleopCommand)
     @source(JointState, JointState)
