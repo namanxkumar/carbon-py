@@ -69,13 +69,6 @@ class Module:
         """Convert the module to a reference."""
         return ModuleReference(self)
 
-    def __getattr__(self, name):
-        if name in self._modules:
-            return self._modules[name]
-        raise AttributeError(
-            f"'{self.__class__.__name__}' object has no attribute '{name}'"
-        )
-
     def __repr__(self, memo=None):
         if memo is None:
             memo = set()

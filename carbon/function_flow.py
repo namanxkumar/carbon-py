@@ -1,3 +1,4 @@
+import multiprocessing
 from collections import OrderedDict
 from typing import Callable, List, Tuple
 
@@ -22,11 +23,25 @@ class FunctionNode:
         representation += f"\n Execution Level: {self.node_level}"
         return representation
 
+    def execute(self, inputs=None):
+        """Execute the function with the given inputs."""
+        # Execute the function and store the result
+        self.result = self.function(inputs) if inputs else self.function()
+        return self.result
+
+
+def run_function(
+    args: Tuple[FunctionNode, List],
+):
+    """Run a function with the given inputs."""
+    return args[0].execute(args[1])
+
 
 class FunctionFlow:
-    def __init__(self):
-        self.nodes: OrderedDict[int, FunctionNode] = OrderedDict()
-        self.execution_order: List[Tuple] = []
+    def __init__(self, max_workers: int = 5):
+        self.max_workers = max_workers
+        self.nodes: OrderedDict[Callable, FunctionNode] = OrderedDict()
+        self.execution_order: List[Tuple[Callable, ...]] = []
 
     def _add_function(self, function: Callable):
         """Add a function to the flow."""
@@ -127,6 +142,28 @@ class FunctionFlow:
                     remaining_dependencies[dependent.function] -= 1
 
         self.execution_order = levels
+
+    def _execute_layer(self, layer: Tuple[Callable, ...], inputs: List = None):
+        """Execute a layer of functions parallelly when possible."""
+        if inputs is None:
+            inputs = [None] * len(layer)
+
+        nodes = [self.nodes[node_id] for node_id in layer]
+        # Create a pool of workers and pass nth input to nth function
+        with multiprocessing.Pool(processes=self.max_workers) as pool:
+            results = pool.map(run_function, list(zip(nodes, inputs)))
+
+        return results
+
+    def execute(self):
+        """Execute the function flow in the computed order."""
+        next_inputs = None
+        for layer in self.execution_order:
+            print(f"\nExecuting layer: {layer}")
+            next_inputs = self._execute_layer(layer, next_inputs)
+            print(f"Results: {next_inputs}")
+        # Return the results of the last layer
+        return next_inputs
 
 
 if __name__ == "__main__":

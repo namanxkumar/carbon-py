@@ -24,8 +24,11 @@ class KangarooDriver(Module):
     @sink(JointState, JointState)
     def send_drive_commands(self, command: Tuple[JointState, JointState]):
         # Executes drive command
-        pass
+        print("Executing drive command", command)
 
     @source(JointState, JointState)
     def receive_motor_feedback(self):
-        pass
+        return (
+            JointState(position=0.0, velocity=0.0),
+            JointState(position=0.0, velocity=0.0),
+        )

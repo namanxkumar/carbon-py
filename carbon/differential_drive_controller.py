@@ -34,4 +34,7 @@ class DifferentialDriveController(Module):
     ) -> Tuple[JointState, JointState]:
         # Send drive command
         # return MotorCommand(), MotorCommand()
-        pass
+        return (
+            JointState(position=0.0, velocity=command.left),
+            JointState(position=0.0, velocity=command.right),
+        )

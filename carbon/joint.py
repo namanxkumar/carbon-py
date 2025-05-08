@@ -16,8 +16,9 @@ class ContinuousJoint(Module):
         self.child = child
 
     @sink(JointState)
-    def update_state(self):
-        pass
+    def update_state(self, state: JointState):
+        # Update the state of the joint based on the received state
+        print(f"Updating joint state: {state}")
 
     def _update_child(self):
         pass

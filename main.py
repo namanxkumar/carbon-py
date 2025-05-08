@@ -55,7 +55,8 @@ class Teleop(Module):
     @source(TeleopCommand)
     def teleop_command(self) -> TeleopCommand:
         # return TeleopCommand(left=0.0, right=0.0)
-        pass
+        print("running teleop_command")
+        return TeleopCommand(left=0.0, right=0.0)
 
 
 class Robot(Module):
@@ -105,3 +106,7 @@ for index, layer in enumerate(flow.execution_order):
             for node_id in layer
         ),
     )
+
+print("EXECUTING")
+result = flow.execute()
+print(result)
