@@ -12,14 +12,20 @@ class KangarooCommand:
 
 
 class KangarooDriver(Module):
-    def __init__(self, left_actuator: ModuleReference, right_actuator: ModuleReference):
+    def __init__(
+        self,
+        left_actuator: ModuleReference,
+        right_actuator: ModuleReference,
+        use_encoder: bool = True,
+    ):
         super().__init__()
 
-        self.create_one_to_many_connection(
-            self.receive_motor_feedback,
-            (left_actuator.module, right_actuator.module),
-            (JointState, JointState),
-        )
+        if use_encoder:
+            self.create_one_to_many_connection(
+                self.receive_motor_feedback,
+                (left_actuator.module, right_actuator.module),
+                (JointState, JointState),
+            )
 
     @sink(JointState, JointState)
     def send_drive_commands(self, command: Tuple[JointState, JointState]):
