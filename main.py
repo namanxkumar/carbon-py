@@ -90,8 +90,9 @@ class Robot(Module):
 
 
 robot = Robot()
+print(robot)
 execution_graph = ExecutionGraph(robot)
-print("Execution Graph Layers:")
+print("\nExecution Graph Layers:")
 print(execution_graph.layers)
 print("\nProcess Groups:")
 print(execution_graph.process_groups)

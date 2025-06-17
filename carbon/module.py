@@ -254,7 +254,7 @@ class Module:
             # Get the string representation of the module
             module_string = module.__repr__(memo)
             module_string = _addindent(module_string, 2)
-            child_lines.append("(" + module.__class__.__name__ + "): " + module_string)
+            child_lines.append(module_string)
 
         main_str = self.__class__.__name__ + "("
         if child_lines:
