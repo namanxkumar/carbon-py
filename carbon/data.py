@@ -13,6 +13,10 @@ class DataMeta(type):
             # If no bases, create a new type
             return super().__new__(cls, name, bases, attrs)
 
+        assert issubclass(bases[0], Data), (
+            "Data classes must inherit from the Data base class."
+        )
+
         return super().__new__(
             cls,
             name,
@@ -21,6 +25,9 @@ class DataMeta(type):
                 attrs, _schema=_generate_arrow_schema(attrs.get("__annotations__", {}))
             ),
         )
+
+    def __repr__(cls):
+        return f"{cls.__name__}({', '.join(f'{k}: {v.__name__}' for k, v in cls.__annotations__.items())})"
 
 
 def _generate_arrow_field_from_primitive_annotation(name, annotation: type):
@@ -105,6 +112,9 @@ class Data(metaclass=DataMeta):
         """
         return self._schema
 
+    def __repr__(self):
+        return f"{self.__class__.__name__}({', '.join(f'{k}={v}' for k, v in self.__dict__.items())})"
+
 
 if __name__ == "__main__":
     # Example usage
@@ -113,8 +123,6 @@ if __name__ == "__main__":
         sub_name: str
         sub_value: int
 
-    # print(SubData.schema)  # Output: sub_name: string, sub_value: int64
-
     @dataclass
     class CustomData(Data):
         name: str
@@ -122,6 +130,6 @@ if __name__ == "__main__":
 
     data_instance = CustomData(name="example", value=[42])
     print(
-        data_instance.schema
+        data_instance
     )  # Output: name: string, value: struct<sub_name: string, sub_value: int64>
     # print(CustomData.schema())  # Output: example

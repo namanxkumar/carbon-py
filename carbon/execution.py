@@ -1,6 +1,7 @@
 from typing import Callable, Dict, List, Sequence
 
-from .module import Connection, ConnectionType, Module
+from .connection import Connection, ConnectionType
+from .module import Module
 
 
 class ExecutionNode:
@@ -44,7 +45,7 @@ class ExecutionGraph:
 
         self.nodes: Dict[Callable, ExecutionNode] = {}
 
-        for connection in self.root_module._get_connections():
+        for connection in self.root_module.get_connections():
             self._build_connection(connection)
 
         self.layers: List[List[Callable]] = self._build_layers()

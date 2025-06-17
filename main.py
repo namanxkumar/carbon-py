@@ -2,7 +2,6 @@ from dataclasses import dataclass
 from typing import Tuple
 
 from carbon.data import Data
-from carbon.execution import ExecutionGraph
 from carbon.module import Module, ModuleReference, sink, source
 
 
@@ -89,16 +88,7 @@ class Robot(Module):
         self.create_connection(self.teleop, self.wheelbase.controller, TeleopCommand)
 
 
-teleop = Robot()
-# print(
-#     teleop._modules,
-#     teleop._connections,
-#     teleop._blocked_connections,
-#     teleop._sources,
-#     teleop._sinks,
-# )
-# print()
-execution_graph = ExecutionGraph(teleop)
-print(len(execution_graph.nodes))
-print(len(execution_graph.layers))
-print(len(execution_graph.process_groups))
+robot = Robot()
+print(list(robot.get_connections())[0])
+for method in robot.get_methods():
+    print(method.name, method.dependencies, method.dependents)

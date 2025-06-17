@@ -1,12 +1,12 @@
-from enum import Enum
-from typing import Callable, Dict, List, Sequence, Set
+from typing import Callable, Dict, List, Sequence, Set, Tuple
 
+from .connection import Connection
 from .data import Data
 
 
 def source(*sources):
     def decorator(func):
-        setattr(func, "_sources", sources if len(sources) > 1 else sources[0])
+        setattr(func, "_sources", tuple(sources))
         return func
 
     return decorator
@@ -14,86 +14,50 @@ def source(*sources):
 
 def sink(*sinks):
     def decorator(func):
-        setattr(func, "_sinks", sinks if len(sinks) > 1 else sinks[0])
+        setattr(func, "_sinks", tuple(sinks))
         return func
 
     return decorator
 
 
-class ConnectionType(Enum):
-    BLOCKING = "blocking"
-    NON_BLOCKING = "non-blocking"
+def _addindent(s_: str, numSpaces: int):
+    s = s_.split("\n")
+    # don't do anything for single-line stuff
+    if len(s) == 1:
+        return s_
+    first = s.pop(0)
+    s = [(numSpaces * " ") + line for line in s]
+    s = "\n".join(s)
+    s = first + "\n" + s
+    return s
 
 
-class Connection:
-    def __init__(
-        self,
-        source: "Module" | Sequence["Module"],
-        sink: "Module" | Sequence["Module"],
-        data: Data | Sequence[Data],
-        blocking: bool = False,
-        queue_size: int = 1,
-    ):
-        assert not (isinstance(source, Sequence) and isinstance(sink, Sequence)), (
-            "Cannot connect multiple sources to multiple sinks directly. "
-            "Use a single source or sink, or create a connection for each pair."
-        )
+class DataMethod:
+    def __init__(self, method: Callable):
+        self.method = method
+        self.name: str = method.__name__
+        self.sources: Tuple[Data] = getattr(method, "_sources", [])
+        self.sinks: Tuple[Data] = getattr(method, "_sinks", [])
+        self.dependencies: Set["DataMethod"] = (
+            set()
+        )  # Methods that depend on this method
+        self.dependents: Set["DataMethod"] = (
+            set()
+        )  # Methods that this method depends on
 
-        self.source = source
-        self.sink = sink
-        self.data = data
-        self.type = ConnectionType.BLOCKING if blocking else ConnectionType.NON_BLOCKING
-        self.queue_size = queue_size
+    def __call__(self, *args, **kwargs):
+        return self.method(*args, **kwargs)
 
-        if isinstance(self.source, Sequence):
-            assert isinstance(data, Sequence), (
-                "If source is a list, data must also be a list."
-            )
-            assert len(self.source) == len(self.data), (
-                "data must have the same length as sources."
-            )
-        elif isinstance(self.sink, Sequence):
-            assert isinstance(data, Sequence), (
-                "If sink is a list, data must also be a list."
-            )
-            assert len(self.sink) == len(self.data), (
-                "data must have the same length as sinks."
-            )
+    def __eq__(self, value):
+        if isinstance(value, DataMethod):
+            return self.method == value.method
+        return self.method == value
 
-        # Verify that source modules contain the correct data type
-        if isinstance(self.source, Sequence):
-            for src, dat in zip(self.source, data):
-                src: "Module"
-                assert dat in src._sources, (
-                    f"Source {src} must have data type {dat} defined in its sources."
-                )
-        else:
-            assert self.data in self.source._sources, (
-                f"Source {source} must have data type {data} defined in its sources."
-            )
-
-        # Verify that sink modules contain the correct data type
-        if isinstance(self.sink, Sequence):
-            for snk, dat in zip(self.sink, data):
-                snk: "Module"
-                assert dat in snk._sinks, (
-                    f"Sink {snk} must have data type {dat} defined in its sinks."
-                )
-        else:
-            assert self.data in self.sink._sinks, (
-                f"Sink {sink} must have data type {data} defined in its sinks."
-            )
+    def __repr__(self):
+        return f"{self.name}"
 
     def __hash__(self):
-        return hash((self.source, self.sink, self.data))
-
-    def __eq__(self, other):
-        return (
-            isinstance(other, Connection)
-            and self.source == other.source
-            and self.sink == other.sink
-            and self.data == other.data
-        )
+        return hash(self.method)
 
 
 class ModuleReference:
@@ -103,9 +67,10 @@ class ModuleReference:
 
 class Module:
     def __init__(self):
-        self._modules: Dict[str, Module] = {}
-        self._sinks: Dict[Data | List[Data], Callable] = {}
-        self._sources: Dict[Data | List[Data], Callable] = {}
+        self._modules: List["Module"] = []
+        self._sinks: Dict[Tuple[Data], DataMethod] = {}
+        self._sources: Dict[Tuple[Data], DataMethod] = {}
+        self._methods: Set[DataMethod] = set()
         self._connections: Set[Connection] = set()
         self._blocked_connections: Set[Connection] = set()
 
@@ -113,17 +78,21 @@ class Module:
         for attribute_name in dir(self):
             attribute = getattr(self, attribute_name)
             if callable(attribute) and hasattr(attribute, "_sources"):
-                datatype = getattr(attribute, "_sources")
+                datatype: Tuple[Data] = getattr(attribute, "_sources")
                 if self._sources.get(datatype) is None:
-                    self._sources[datatype] = attribute
+                    data_method = DataMethod(attribute)
+                    self._sources[datatype] = data_method
+                    self._methods.add(data_method)
                 else:
                     raise ValueError(
                         f"Multiple sources defined for data type {datatype}"
                     )
             if callable(attribute) and hasattr(attribute, "_sinks"):
-                datatype = getattr(attribute, "_sinks")
+                datatype: Tuple[Data] = getattr(attribute, "_sinks")
                 if self._sinks.get(datatype) is None:
-                    self._sinks[datatype] = attribute
+                    data_method = DataMethod(attribute)
+                    self._sinks[datatype] = data_method
+                    self._methods.add(data_method)
                 else:
                     raise ValueError(f"Multiple sinks defined for data type {datatype}")
 
@@ -133,12 +102,24 @@ class Module:
         """
         return ModuleReference(self)
 
-    def __setattr__(self, name, value):
-        if isinstance(value, Module):
-            module_connections = value._get_connections()
+    def add_modules(
+        self,
+        module: Sequence["Module"],
+    ):
+        """
+        Add a module or a collection of modules to this module.
+        Ensures that connections are unique.
+        """
+        for mod in module:
+            module_connections = mod.get_connections()
             for connection in module_connections:
                 self._ensure_unique_connection(connection)
-            self._modules[name] = value
+            if mod not in self._modules:
+                self._modules.append(mod)
+
+    def __setattr__(self, name, value):
+        if isinstance(value, Module):
+            self.add_modules([value])
             super().__setattr__(name, value)
         else:
             super().__setattr__(name, value)
@@ -147,34 +128,50 @@ class Module:
         self,
         connection: Connection,
     ):
-        existing_connections = self._get_connections()
+        existing_connections = self.get_connections()
         for existing_connection in existing_connections:
             if existing_connection == connection:
                 raise ValueError(
                     f"Connection already exists between {connection.source} and {connection.sink} for data {connection.data}"
                 )
 
-    def _get_connections(self, recursive: bool = True, memo: Set = None):
+    def get_connections(self, recursive: bool = True, _memo: Set = None):
         if not recursive:
             return self._connections - self._blocked_connections
 
-        if memo is None:
-            memo = set()
+        if _memo is None:
+            _memo = set()
 
         connections = self._connections.copy()
 
-        for module in self._modules.values():
-            if module not in memo:
-                memo.add(module)
-                connections.update(module._get_connections(recursive, memo))
+        for module in self._modules:
+            if module not in _memo:
+                _memo.add(module)
+                connections.update(module.get_connections(recursive, _memo))
 
         return connections - self._blocked_connections
 
+    def get_methods(self, recursive: bool = True, _memo: Set = None):
+        if not recursive:
+            return self._methods
+
+        if _memo is None:
+            _memo = set()
+
+        methods = self._methods.copy()
+
+        for module in self._modules:
+            if module not in _memo:
+                _memo.add(module)
+                methods.update(module.get_methods(recursive, _memo))
+
+        return methods
+
     def create_connection(
         self,
-        source: "Module" | List["Module"],
-        sink: "Module" | List["Module"],
-        data: Data | List[Data],
+        source: "Module" | Sequence["Module"],
+        sink: "Module" | Sequence["Module"],
+        data: Data | Sequence[Data],
         blocking: bool = False,
         queue_size: int = 1,
     ):
@@ -184,6 +181,10 @@ class Module:
         connection = Connection(source, sink, data, blocking, queue_size)
         self._ensure_unique_connection(connection)
         self._connections.add(connection)
+        for source_method in connection.source_methods:
+            for sink_method in connection.sink_methods:
+                source_method.dependents.add(sink_method)
+                sink_method.dependencies.add(source_method)
         return connection
 
     def add_connection(
@@ -195,18 +196,23 @@ class Module:
         """
         self._ensure_unique_connection(connection)
         self._connections.add(connection)
+        for source_method in connection.source_methods:
+            for sink_method in connection.sink_methods:
+                source_method.dependents.add(sink_method)
+                sink_method.dependencies.add(source_method)
 
     def block_connection(
         self,
-        source: "Module" | List["Module"] | None,
-        sink: "Module" | List["Module"] | None,
-        data: Data | List[Data],
+        source: "Module" | Sequence["Module"] | None,
+        sink: "Module" | Sequence["Module"] | None,
+        data: Data | Sequence[Data],
     ):
         """
         Block a connection between source and sink modules for the specified data type.
         """
-        for existing_connection in self._get_connections():
+        for existing_connection in self.get_connections():
             removal = False
+
             if source is None and sink is None and existing_connection.data == data:
                 removal = True
             elif (
@@ -230,21 +236,26 @@ class Module:
             if removal:
                 self._blocked_connections.add(existing_connection)
 
+    def __repr__(self, memo=None):
+        if memo is None:
+            memo = set()
 
-if __name__ == "__main__":
-    from dataclasses import dataclass
+        # Avoid infinite recursion by checking if the module is already visited
+        if self in memo:
+            return f"<{self.__class__.__name__} (circular reference)>"
 
-    @dataclass
-    class WheelBaseCommand(Data):
-        left: float
-        right: float
+        memo.add(self)
+        child_lines = []
 
-    class WheelBase(Module):
-        def __init__(self):
-            super().__init__()
+        for module in self._modules:
+            # Get the string representation of the module
+            module_string = module.__repr__(memo)
+            module_string = _addindent(module_string, 2)
+            child_lines.append("(" + module.__class__.__name__ + "): " + module_string)
 
-            self.a = 0
+        main_str = self.__class__.__name__ + "("
+        if child_lines:
+            main_str += "\n  " + "\n  ".join(child_lines) + "\n"
 
-    test = WheelBase.Command(left=0.0, right=0.0)
-    print(test)
-    print(WheelBase.__dict__)
+        main_str += ")"
+        return main_str
