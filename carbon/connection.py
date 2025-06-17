@@ -10,6 +10,9 @@ class ConnectionType(Enum):
     BLOCKING = "blocking"
     NON_BLOCKING = "non-blocking"
 
+    def __repr__(self):
+        return f"ConnectionType.{self.name}"
+
 
 class Connection:
     def __init__(

@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import Tuple
 
 from carbon.data import Data
+from carbon.execution import ExecutionGraph
 from carbon.module import Module, ModuleReference, sink, source
 
 
@@ -89,6 +90,14 @@ class Robot(Module):
 
 
 robot = Robot()
-print(list(robot.get_connections())[0])
+execution_graph = ExecutionGraph(robot)
+print("Execution Graph Layers:")
+print(execution_graph.layers)
+print("\nProcess Groups:")
+print(execution_graph.process_groups)
+print("\nConnections:")
+for connection in robot.get_connections():
+    print(connection)
+print("\nMethods:")
 for method in robot.get_methods():
     print(method.name, method.dependencies, method.dependents)

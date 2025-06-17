@@ -1,91 +1,20 @@
-from typing import Callable, Dict, List, Sequence
+from typing import List, Set
 
-from .connection import Connection, ConnectionType
-from .module import Module
-
-
-class ExecutionNode:
-    """Represents a node in the execution graph."""
-
-    def __init__(self, function: Callable):
-        self.name = function.__name__
-        self.function = function
-        self.dependencies: Dict[
-            ExecutionNode, ConnectionType
-        ] = {}  # Nodes that feed into this one
-        self.dependents: Dict[
-            ExecutionNode, ConnectionType
-        ] = {}  # Nodes that this one feeds into
-        self.result = None  # Stores the last execution result
-
-    def __repr__(self):
-        representation = f"ExecutionNode({self.name})"
-        representation += f"\n <- {[dep.name for dep in self.dependencies.keys()]}"
-        representation += f"\n -> {[dep.name for dep in self.dependents.keys()]}"
-        return representation
-
-    def execute(self, inputs=None):
-        """Execute the module with the given inputs."""
-        # Execute the module and store the result
-        self.result = self.function(inputs) if inputs else self.function()
-        return self.result
-
-    def __eq__(self, value):
-        """Check equality based on function name."""
-        return isinstance(value, ExecutionNode) and self.function == value.function
-
-    def __hash__(self):
-        """Hash based on function name."""
-        return hash(self.function)
+from .connection import ConnectionType
+from .module import DataMethod, Module
 
 
 class ExecutionGraph:
     def __init__(self, root_module: Module):
         self.root_module = root_module
 
-        self.nodes: Dict[Callable, ExecutionNode] = {}
+        methods = self.root_module.get_methods()
 
-        for connection in self.root_module.get_connections():
-            self._build_connection(connection)
+        self.layers: List[List["DataMethod"]] = self._build_layers(methods)
 
-        self.layers: List[List[Callable]] = self._build_layers()
+        self.process_groups: List[List["DataMethod"]] = self._build_processes(methods)
 
-        self.process_groups: List[List[Callable]] = self._build_processes()
-
-    def _create_node(self, function: Callable) -> ExecutionNode:
-        """Add a node to the execution graph."""
-        if function not in self.nodes:
-            self.nodes[function] = ExecutionNode(function)
-        return self.nodes[function]
-
-    def _build_connection(self, connection: Connection):
-        """Build a connection between source and sink nodes."""
-        source_nodes: List[ExecutionNode] = []
-
-        if isinstance(connection.source, Sequence):
-            for source_index, source in enumerate(connection.source):
-                source_method = source._sources.get(connection.data[source_index])
-                source_nodes.append(self._create_node(source_method))
-        else:
-            source_method = connection.source._sources.get(connection.data)
-            source_nodes.append(self._create_node(source_method))
-
-        sink_nodes: List[ExecutionNode] = []
-
-        if isinstance(connection.sink, Sequence):
-            for sink_index, sink in enumerate(connection.sink):
-                sink_method = sink._sinks.get(connection.data[sink_index])
-                sink_nodes.append(self._create_node(sink_method))
-        else:
-            sink_method = connection.sink._sinks.get(connection.data)
-            sink_nodes.append(self._create_node(sink_method))
-
-        for source_node in source_nodes:
-            for sink_node in sink_nodes:
-                source_node.dependents[sink_node] = connection.type
-                sink_node.dependencies[source_node] = connection.type
-
-    def _build_layers(self):
+    def _build_layers(self, methods: Set["DataMethod"]) -> List[List["DataMethod"]]:
         """Compute a topological ordering of the functions.
         This does not handle cycles. Ordering is done as follows:
         Given a graph as follows:
@@ -105,19 +34,18 @@ class ExecutionGraph:
         with each layer as a list of nodes.
         """
 
-        remaining_dependencies = {node_id: 0 for node_id in self.nodes.keys()}
+        remaining_dependencies = {
+            method: len(method.dependencies) for method in methods
+        }
 
-        for node_id, node in self.nodes.items():
-            remaining_dependencies[node_id] = len(node.dependencies)
+        layers: List[List["DataMethod"]] = []
+        remaining_methods = methods.copy()
 
-        layers = []
-        remaining_nodes = set(self.nodes.keys())
-
-        while remaining_nodes:
+        while remaining_methods:
             current_level = [
-                node_id
-                for node_id in remaining_nodes
-                if remaining_dependencies[node_id] == 0
+                method
+                for method in remaining_methods
+                if remaining_dependencies[method] == 0
             ]
 
             if not current_level:
@@ -125,28 +53,28 @@ class ExecutionGraph:
 
             layers.append(current_level)
 
-            for node_id in current_level:
-                remaining_nodes.remove(node_id)
-                for dependent in self.nodes[node_id].dependents.keys():
-                    remaining_dependencies[dependent.function] -= 1
+            for method in current_level:
+                remaining_methods.remove(method)
+                for dependent_method in method.dependents.keys():
+                    remaining_dependencies[dependent_method] -= 1
 
         return layers
 
-    def _build_processes(self):
+    def _build_processes(self, methods: Set["DataMethod"]) -> List[List["DataMethod"]]:
         """Build processes based on connection type of the nodes."""
 
-        groups = {node_id: {node_id} for node_id in self.nodes.keys()}
-        group_mapping = {node_id: node_id for node_id in self.nodes.keys()}
+        groups = {method: {method} for method in methods}
+        group_mapping = {method: method for method in methods}
 
-        nodes_beyond_first_layer = [
-            node_id for layer in self.layers[1:] for node_id in layer
+        methods_beyond_first_layer = [
+            method for layer in self.layers[1:] for method in layer
         ]
 
-        for node_id in nodes_beyond_first_layer:
-            for dependency, type in self.nodes[node_id].dependencies.items():
+        for method in methods_beyond_first_layer:
+            for dependency, type in method.dependencies.items():
                 if type is ConnectionType.BLOCKING:
-                    node_group = group_mapping[node_id]
-                    dependency_group = group_mapping[dependency.function]
+                    node_group = group_mapping[method]
+                    dependency_group = group_mapping[dependency]
                     # Check if the dependency is in a different group
                     if node_group != dependency_group:
                         # If it is, we need to merge groups
