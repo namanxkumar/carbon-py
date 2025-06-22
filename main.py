@@ -32,7 +32,7 @@ class DifferentialDriveController(Module):
                 self,
                 (left_motor.module, right_motor.module),
                 (JointState, JointState),
-                blocking=True,
+                sync=True,
             )
 
     @sink(TeleopCommand)

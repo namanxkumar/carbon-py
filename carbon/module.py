@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING, Callable, Dict, List, Sequence, Set, Tuple
 
-from .connection import Connection
+from .connection import AsyncConnection, Connection, SyncConnection
 
 if TYPE_CHECKING:
     from .connection import ConnectionType
@@ -175,13 +175,20 @@ class Module:
         source: "Module" | Sequence["Module"],
         sink: "Module" | Sequence["Module"],
         data: "Data" | Sequence["Data"],
-        blocking: bool = False,
+        sticky_queue: bool = False,
         queue_size: int = 1,
+        sync: bool = False,
     ):
         """
         Create a connection between source and sink modules for the specified data type.
         """
-        connection = Connection(source, sink, data, blocking, queue_size)
+        connection = (
+            AsyncConnection(
+                source, sink, data, sticky_queue=sticky_queue, queue_size=queue_size
+            )
+            if not sync
+            else SyncConnection(source, sink, data)
+        )
         self._ensure_unique_connection(connection)
         self._connections.add(connection)
         for source_method in connection.source_methods:
@@ -192,7 +199,7 @@ class Module:
 
     def add_connection(
         self,
-        connection: "Connection",
+        connection: AsyncConnection | SyncConnection,
     ):
         """
         Add an existing connection to the module.

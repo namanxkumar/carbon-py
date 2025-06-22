@@ -20,7 +20,8 @@ class Connection:
         source: "Module" | Sequence["Module"],
         sink: "Module" | Sequence["Module"],
         data: "Data" | Sequence["Data"],
-        blocking: bool = False,
+        type: ConnectionType = ConnectionType.NON_BLOCKING,
+        sticky_queue: bool = False,
         queue_size: int = 1,
     ):
         assert not (
@@ -34,7 +35,8 @@ class Connection:
         self.source = tuple(source) if isinstance(source, Sequence) else (source,)
         self.sink = tuple(sink) if isinstance(sink, Sequence) else (sink,)
         self.data = tuple(data) if isinstance(data, Sequence) else (data,)
-        self.type = ConnectionType.BLOCKING if blocking else ConnectionType.NON_BLOCKING
+        self.type = type
+        self.sticky_queue = sticky_queue
         self.queue_size = queue_size
 
         if len(self.source) > 1 and len(self.source) != len(self.data):
@@ -88,5 +90,50 @@ class Connection:
     def __repr__(self):
         return (
             f"Connection(source={self.source}, sink={self.sink}, "
-            f"data={self.data}, type={self.type}, queue_size={self.queue_size})"
+            f"data={self.data}, type={self.type}, queue_size={self.queue_size}, sticky_queue={self.sticky_queue})"
+        )
+
+
+class AsyncConnection(Connection):
+    def __init__(
+        self,
+        source: "Module" | Sequence["Module"],
+        sink: "Module" | Sequence["Module"],
+        data: "Data" | Sequence["Data"],
+        sticky_queue: bool = False,
+        queue_size: int = 1,
+    ):
+        super().__init__(
+            source=source,
+            sink=sink,
+            data=data,
+            sticky_queue=sticky_queue,
+            queue_size=queue_size,
+            type=ConnectionType.NON_BLOCKING,
+        )
+
+    def __repr__(self):
+        return (
+            f"AsyncConnection(source={self.source}, sink={self.sink}, "
+            f"data={self.data}, queue_size={self.queue_size}, sticky_queue={self.sticky_queue})"
+        )
+
+
+class SyncConnection(Connection):
+    def __init__(
+        self,
+        source: "Module" | Sequence["Module"],
+        sink: "Module" | Sequence["Module"],
+        data: "Data" | Sequence["Data"],
+    ):
+        super().__init__(
+            source=source,
+            sink=sink,
+            data=data,
+            type=ConnectionType.BLOCKING,
+        )
+
+    def __repr__(self):
+        return (
+            f"SyncConnection(source={self.source}, sink={self.sink}, data={self.data})"
         )
