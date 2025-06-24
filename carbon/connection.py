@@ -72,9 +72,6 @@ class Connection:
             assert self.data in self.source[0]._sources, (
                 f"Source {self.source[0]} must have data type {self.data[0]} defined in its sources."
             )
-            assert len(self.data) == 1, (
-                "When a single source is provided, data must be a single type, not a sequence of types."
-            )
             self.source_methods = tuple([self.source[0]._sources[self.data]])
 
         if len(self.sink) > 1:
@@ -88,9 +85,6 @@ class Connection:
         elif len(self.sink) == 1:
             assert self.data in self.sink[0]._sinks, (
                 f"Sink {self.sink[0]} must have data type {self.data[0]} defined in its sinks."
-            )
-            assert len(self.data) == 1, (
-                "When a single sink is provided, data must be a single type, not a sequence of types."
             )
             self.sink_methods = tuple([self.sink[0]._sinks[self.data]])
 

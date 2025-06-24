@@ -82,8 +82,8 @@ class ModuleReference:
 class Module:
     def __init__(self):
         self._modules: List["Module"] = []
-        self._sinks: Dict[Tuple[Type["Data"]], "DataMethod"] = {}
-        self._sources: Dict[Tuple[Type["Data"]], "DataMethod"] = {}
+        self._sinks: Dict[Tuple[Type["Data"], ...], "DataMethod"] = {}
+        self._sources: Dict[Tuple[Type["Data"], ...], "DataMethod"] = {}
         self._methods: Set["DataMethod"] = set()
         self._connections: Set["Connection"] = set()
         self._blocked_connections: Set["Connection"] = set()
