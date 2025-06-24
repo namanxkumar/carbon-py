@@ -101,4 +101,6 @@ for connection in robot.get_connections():
     print(connection)
 print("\nMethods:")
 for method in robot.get_methods():
-    print(method.name, method.dependencies, method.dependents)
+    print(method.name)
+    print("  Depends on:", method.dependencies)
+    print("  Produces for:", method.dependents)

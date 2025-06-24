@@ -21,6 +21,26 @@ class ConnectionMetadata:
     queue_size: int
     sticky_queue: bool
 
+    def __post_init__(self):
+        if self.queue_size < 1:
+            raise ValueError("Queue size must be at least 1.")
+        if self.type is ConnectionType.BLOCKING:
+            assert not self.sticky_queue, (
+                "Sticky queues are not allowed for blocking connections."
+            )
+            assert self.queue_size == 1, (
+                "Queue size must be 1 for blocking connections."
+            )
+
+    def __repr__(self):
+        if self.type is ConnectionType.BLOCKING:
+            return f"ConnectionMetadata(type={self.type})"
+        else:
+            return (
+                f"ConnectionMetadata(type={self.type}, "
+                f"queue_size={self.queue_size}, sticky_queue={self.sticky_queue})"
+            )
+
 
 class Connection:
     def __init__(

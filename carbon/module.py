@@ -50,14 +50,25 @@ class DataMethod:
     def __init__(self, method: Callable):
         self.method = method
         self.name: str = method.__name__
-        self.sources: Tuple[Type["Data"]] = cast(
-            Tuple[Type["Data"]], getattr(method, "_sources", [])
+        self.sources: Tuple[Type["Data"], ...] = cast(
+            Tuple[Type["Data"], ...], getattr(method, "_sources", [])
         )
-        self.sinks: Tuple[Type["Data"]] = cast(
-            Tuple[Type["Data"]], getattr(method, "_sinks", [])
+        self.sinks: Tuple[Type["Data"], ...] = cast(
+            Tuple[Type["Data"], ...], getattr(method, "_sinks", [])
         )
         self.dependencies: Dict["DataMethod", "ConnectionMetadata"] = {}
         self.dependents: Dict["DataMethod", "ConnectionMetadata"] = {}
+
+        # Queue size is the maximum over the connection metadata for all dependents
+        self.max_queue_size: int = max(
+            (metadata.queue_size for metadata in self.dependents.values()),
+            default=1,
+        )
+        self.source_queue: List[Tuple["Data", ...]] = []
+
+        # TODO: Add support for sticky queues
+        # TODO: Add a method to update and fetch source queue
+        # TODO: Add a message cache and a message cache size for logging and transforms (historical transforms)
 
     def __call__(self, *args, **kwargs):
         return self.method(*args, **kwargs)
@@ -98,7 +109,7 @@ class Module:
                 continue
 
             if hasattr(attribute, "_sources"):
-                datatype: Tuple[Type["Data"]] = getattr(attribute, "_sources")
+                datatype: Tuple[Type["Data"], ...] = getattr(attribute, "_sources")
                 if self._sources.get(datatype) is None:
                     self._sources[datatype] = data_method
                     self._methods.add(data_method)
@@ -107,7 +118,7 @@ class Module:
                         f"Multiple sources defined for data type {datatype}"
                     )
             if hasattr(attribute, "_sinks"):
-                datatype: Tuple[Type["Data"]] = getattr(attribute, "_sinks")
+                datatype: Tuple[Type["Data"], ...] = getattr(attribute, "_sinks")
                 if self._sinks.get(datatype) is None:
                     self._sinks[datatype] = data_method
                     self._methods.add(data_method)
