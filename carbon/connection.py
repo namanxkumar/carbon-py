@@ -1,5 +1,6 @@
+from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING, Sequence
+from typing import TYPE_CHECKING, Sequence, Tuple, Type
 
 if TYPE_CHECKING:
     from .data import Data
@@ -14,12 +15,19 @@ class ConnectionType(Enum):
         return f"ConnectionType.{self.name}"
 
 
+@dataclass
+class ConnectionMetadata:
+    type: "ConnectionType"
+    queue_size: int
+    sticky_queue: bool
+
+
 class Connection:
     def __init__(
         self,
         source: "Module" | Sequence["Module"],
         sink: "Module" | Sequence["Module"],
-        data: "Data" | Sequence["Data"],
+        data: Type["Data"] | Sequence[Type["Data"]],
         type: ConnectionType = ConnectionType.NON_BLOCKING,
         sticky_queue: bool = False,
         queue_size: int = 1,
@@ -34,10 +42,14 @@ class Connection:
 
         self.source = tuple(source) if isinstance(source, Sequence) else (source,)
         self.sink = tuple(sink) if isinstance(sink, Sequence) else (sink,)
-        self.data = tuple(data) if isinstance(data, Sequence) else (data,)
-        self.type = type
-        self.sticky_queue = sticky_queue
-        self.queue_size = queue_size
+        self.data: Tuple[Type["Data"], ...] | Tuple[Type["Data"]] = (
+            tuple(data) if isinstance(data, Sequence) else (data,)
+        )
+        self.metadata = ConnectionMetadata(
+            type=type,
+            queue_size=queue_size,
+            sticky_queue=sticky_queue,
+        )
 
         if len(self.source) > 1 and len(self.source) != len(self.data):
             raise ValueError(
@@ -54,13 +66,16 @@ class Connection:
                     f"Source {src} must have data type {dat} defined in its sources."
                 )
             self.source_methods = tuple(
-                [src._sources.get((dat,)) for src, dat in zip(self.source, self.data)]
+                [src._sources[(dat,)] for src, dat in zip(self.source, self.data)]
             )
-        else:
+        elif len(self.source) == 1:
             assert self.data in self.source[0]._sources, (
                 f"Source {self.source[0]} must have data type {self.data[0]} defined in its sources."
             )
-            self.source_methods = tuple([self.source[0]._sources.get(self.data)])
+            assert len(self.data) == 1, (
+                "When a single source is provided, data must be a single type, not a sequence of types."
+            )
+            self.source_methods = tuple([self.source[0]._sources[self.data]])
 
         if len(self.sink) > 1:
             for snk, dat in zip(self.sink, self.data):
@@ -68,13 +83,16 @@ class Connection:
                     f"Sink {snk} must have data type {dat} defined in its sinks."
                 )
             self.sink_methods = tuple(
-                [snk._sinks.get((dat,)) for snk, dat in zip(self.sink, self.data)]
+                [snk._sinks[(dat,)] for snk, dat in zip(self.sink, self.data)]
             )
-        else:
+        elif len(self.sink) == 1:
             assert self.data in self.sink[0]._sinks, (
                 f"Sink {self.sink[0]} must have data type {self.data[0]} defined in its sinks."
             )
-            self.sink_methods = tuple([self.sink[0]._sinks.get(self.data)])
+            assert len(self.data) == 1, (
+                "When a single sink is provided, data must be a single type, not a sequence of types."
+            )
+            self.sink_methods = tuple([self.sink[0]._sinks[self.data]])
 
     def __hash__(self):
         return hash((self.source, self.sink, self.data))
@@ -90,7 +108,7 @@ class Connection:
     def __repr__(self):
         return (
             f"Connection(source={self.source}, sink={self.sink}, "
-            f"data={self.data}, type={self.type}, queue_size={self.queue_size}, sticky_queue={self.sticky_queue})"
+            f"data={self.data}, type={self.metadata.type}, queue_size={self.metadata.queue_size}, sticky_queue={self.metadata.sticky_queue})"
         )
 
 
@@ -99,7 +117,7 @@ class AsyncConnection(Connection):
         self,
         source: "Module" | Sequence["Module"],
         sink: "Module" | Sequence["Module"],
-        data: "Data" | Sequence["Data"],
+        data: Type["Data"] | Sequence[Type["Data"]],
         sticky_queue: bool = False,
         queue_size: int = 1,
     ):
@@ -115,7 +133,7 @@ class AsyncConnection(Connection):
     def __repr__(self):
         return (
             f"AsyncConnection(source={self.source}, sink={self.sink}, "
-            f"data={self.data}, queue_size={self.queue_size}, sticky_queue={self.sticky_queue})"
+            f"data={self.data}, queue_size={self.metadata.queue_size}, sticky_queue={self.metadata.sticky_queue})"
         )
 
 
@@ -124,7 +142,7 @@ class SyncConnection(Connection):
         self,
         source: "Module" | Sequence["Module"],
         sink: "Module" | Sequence["Module"],
-        data: "Data" | Sequence["Data"],
+        data: Type["Data"] | Sequence[Type["Data"]],
     ):
         super().__init__(
             source=source,

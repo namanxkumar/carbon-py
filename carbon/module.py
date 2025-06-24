@@ -1,9 +1,20 @@
-from typing import TYPE_CHECKING, Callable, Dict, List, Sequence, Set, Tuple
+from typing import (
+    TYPE_CHECKING,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Sequence,
+    Set,
+    Tuple,
+    Type,
+    cast,
+)
 
 from .connection import AsyncConnection, Connection, SyncConnection
 
 if TYPE_CHECKING:
-    from .connection import ConnectionType
+    from .connection import ConnectionMetadata
     from .data import Data
 
 
@@ -39,10 +50,14 @@ class DataMethod:
     def __init__(self, method: Callable):
         self.method = method
         self.name: str = method.__name__
-        self.sources: Tuple["Data"] = getattr(method, "_sources", [])
-        self.sinks: Tuple["Data"] = getattr(method, "_sinks", [])
-        self.dependencies: Dict["DataMethod", "ConnectionType"] = {}
-        self.dependents: Dict["DataMethod", "ConnectionType"] = {}
+        self.sources: Tuple[Type["Data"]] = cast(
+            Tuple[Type["Data"]], getattr(method, "_sources", [])
+        )
+        self.sinks: Tuple[Type["Data"]] = cast(
+            Tuple[Type["Data"]], getattr(method, "_sinks", [])
+        )
+        self.dependencies: Dict["DataMethod", "ConnectionMetadata"] = {}
+        self.dependents: Dict["DataMethod", "ConnectionMetadata"] = {}
 
     def __call__(self, *args, **kwargs):
         return self.method(*args, **kwargs)
@@ -67,8 +82,8 @@ class ModuleReference:
 class Module:
     def __init__(self):
         self._modules: List["Module"] = []
-        self._sinks: Dict[Tuple["Data"], "DataMethod"] = {}
-        self._sources: Dict[Tuple[Data], "DataMethod"] = {}
+        self._sinks: Dict[Tuple[Type["Data"]], "DataMethod"] = {}
+        self._sources: Dict[Tuple[Type["Data"]], "DataMethod"] = {}
         self._methods: Set["DataMethod"] = set()
         self._connections: Set["Connection"] = set()
         self._blocked_connections: Set["Connection"] = set()
@@ -83,7 +98,7 @@ class Module:
                 continue
 
             if hasattr(attribute, "_sources"):
-                datatype: Tuple["Data"] = getattr(attribute, "_sources")
+                datatype: Tuple[Type["Data"]] = getattr(attribute, "_sources")
                 if self._sources.get(datatype) is None:
                     self._sources[datatype] = data_method
                     self._methods.add(data_method)
@@ -92,7 +107,7 @@ class Module:
                         f"Multiple sources defined for data type {datatype}"
                     )
             if hasattr(attribute, "_sinks"):
-                datatype: Tuple["Data"] = getattr(attribute, "_sinks")
+                datatype: Tuple[Type["Data"]] = getattr(attribute, "_sinks")
                 if self._sinks.get(datatype) is None:
                     self._sinks[datatype] = data_method
                     self._methods.add(data_method)
@@ -138,7 +153,7 @@ class Module:
                     f"Connection already exists between {connection.source} and {connection.sink} for data {connection.data}"
                 )
 
-    def get_connections(self, recursive: bool = True, _memo: Set = None):
+    def get_connections(self, recursive: bool = True, _memo: Optional[Set] = None):
         if not recursive:
             return self._connections - self._blocked_connections
 
@@ -154,7 +169,7 @@ class Module:
 
         return connections - self._blocked_connections
 
-    def get_methods(self, recursive: bool = True, _memo: Set = None):
+    def get_methods(self, recursive: bool = True, _memo: Optional[Set] = None):
         if not recursive:
             return self._methods
 
@@ -174,7 +189,7 @@ class Module:
         self,
         source: "Module" | Sequence["Module"],
         sink: "Module" | Sequence["Module"],
-        data: "Data" | Sequence["Data"],
+        data: Type["Data"] | Sequence[Type["Data"]],
         sticky_queue: bool = False,
         queue_size: int = 1,
         sync: bool = False,
@@ -193,8 +208,8 @@ class Module:
         self._connections.add(connection)
         for source_method in connection.source_methods:
             for sink_method in connection.sink_methods:
-                source_method.dependents[sink_method] = connection.type
-                sink_method.dependencies[source_method] = connection.type
+                source_method.dependents[sink_method] = connection.metadata
+                sink_method.dependencies[source_method] = connection.metadata
         return connection
 
     def add_connection(
@@ -208,8 +223,8 @@ class Module:
         self._connections.add(connection)
         for source_method in connection.source_methods:
             for sink_method in connection.sink_methods:
-                source_method.dependents[sink_method] = connection.type
-                sink_method.dependencies[source_method] = connection.type
+                source_method.dependents[sink_method] = connection.metadata
+                sink_method.dependencies[source_method] = connection.metadata
 
     def block_connection(
         self,

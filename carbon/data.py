@@ -33,10 +33,10 @@ class DataMeta(type):
 def _generate_arrow_field_from_primitive_annotation(name, annotation: type):
     # Primitive type
     if issubclass(annotation, Data):
-        schema = annotation._schema
+        schema = getattr(annotation, "_schema", None)
         if schema is None:
             raise TypeError(f"Data type {annotation.__name__} has no schema defined.")
-        return pa.field(name, pa.struct(annotation._schema))
+        return pa.field(name, pa.struct(schema))
     elif issubclass(annotation, pa.DataType):
         return pa.field(name, annotation)
     elif annotation is int:
@@ -101,7 +101,7 @@ class Data(metaclass=DataMeta):
     Subclass this and define fields using type annotations to create custom datatypes.
     """
 
-    def __init__():
+    def __init__(self):
         pass
 
     @property
@@ -110,7 +110,11 @@ class Data(metaclass=DataMeta):
         Returns the PyArrow schema for this data type.
         This is generated based on the type annotations of the class.
         """
-        return self._schema
+        assert hasattr(self, "_schema"), (
+            "Data class must have a schema defined. "
+            "Ensure you are using the Data base class on a dataclass with type annotations."
+        )
+        return getattr(self, "_schema")
 
     def __repr__(self):
         return f"{self.__class__.__name__}({', '.join(f'{k}={v}' for k, v in self.__dict__.items())})"
@@ -119,16 +123,11 @@ class Data(metaclass=DataMeta):
 if __name__ == "__main__":
     # Example usage
     @dataclass
-    class SubData(Data):
-        sub_name: str
-        sub_value: int
-
-    @dataclass
     class CustomData(Data):
         name: str
-        value: tuple[SubData]
+        value: tuple[int]
 
-    data_instance = CustomData(name="example", value=[42])
+    data_instance = CustomData(name="example", value=(42,))
     print(
         data_instance
     )  # Output: name: string, value: struct<sub_name: string, sub_value: int64>

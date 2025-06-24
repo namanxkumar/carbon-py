@@ -1,17 +1,16 @@
 from typing import List, Set
 
 from .connection import ConnectionType
-from .module import DataMethod, Module
+from .module import DataMethod, Module, ModuleReference
 
 
-class ExecutionGraph:
-    def __init__(self, root_module: Module):
-        self.root_module = root_module
+class ExecutionGraph(Module):
+    def __init__(self, root_module: ModuleReference):
+        super().__init__()
 
-        methods = self.root_module.get_methods()
+        methods = root_module.module.get_methods()
 
         self.layers: List[List["DataMethod"]] = self._build_layers(methods)
-
         self.process_groups: List[List["DataMethod"]] = self._build_processes(methods)
 
     def _build_layers(self, methods: Set["DataMethod"]) -> List[List["DataMethod"]]:
@@ -71,8 +70,8 @@ class ExecutionGraph:
         ]
 
         for method in methods_beyond_first_layer:
-            for dependency, type in method.dependencies.items():
-                if type is ConnectionType.BLOCKING:
+            for dependency, metadata in method.dependencies.items():
+                if metadata.type is ConnectionType.BLOCKING:
                     node_group = group_mapping[method]
                     dependency_group = group_mapping[dependency]
                     # Check if the dependency is in a different group
@@ -88,4 +87,4 @@ class ExecutionGraph:
                         groups[dependency_group] = merged_group
                         del groups[node_group]
 
-        return list(groups.values())
+        return list([list(group) for group in groups.values()])
