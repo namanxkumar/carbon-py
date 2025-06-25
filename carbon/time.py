@@ -6,12 +6,12 @@ It is automatically added to the system root module.
 
 from dataclasses import dataclass
 
-from carbon.data import Data
+from carbon.data import BaseData
 from carbon.module import Module, source
 
 
 @dataclass
-class TimeData(Data):
+class TimeData(BaseData):
     """
     Data class representing time data.
     Contains a timestamp in seconds.

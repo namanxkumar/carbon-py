@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Union
 
 import pyarrow as pa
 
@@ -17,13 +18,26 @@ class DataMeta(type):
             "Data classes must inherit from the Data base class."
         )
 
+        # Get the schema of the base class if it exists
+        base_schema = getattr(bases[0], "_schema", None)
+        new_schema = _generate_arrow_schema(attrs.get("__annotations__", {}))
+
+        # Merge the base schema with the new schema
+        if base_schema is not None:
+            # Ensure the base schema is a PyArrow schema
+            if not isinstance(base_schema, pa.Schema):
+                raise TypeError(
+                    f"Base class {bases[0].__name__} must have a valid PyArrow schema."
+                )
+            new_schema = pa.schema(
+                pa.struct(base_schema).fields + pa.struct(new_schema).fields
+            )
+
         return super().__new__(
             cls,
             name,
             bases,
-            dict(
-                attrs, _schema=_generate_arrow_schema(attrs.get("__annotations__", {}))
-            ),
+            dict(attrs, _schema=new_schema),
         )
 
     def __repr__(cls):
@@ -85,6 +99,17 @@ def _generate_arrow_schema(attrs):
                     ),
                 )
             )
+        elif hasattr(annotation, "__origin__") and annotation.__origin__ is Union:
+            union_types = annotation.__args__
+            non_none_types = [t for t in union_types if t is not Autofill]
+            if len(non_none_types) == 1:
+                fields.append(
+                    _generate_arrow_field_from_primitive_annotation(
+                        name, non_none_types[0]
+                    )
+                )
+            else:
+                raise TypeError(f"Unsupported Union type: {annotation}")
         elif isinstance(annotation, type):
             fields.append(
                 _generate_arrow_field_from_primitive_annotation(name, annotation)
@@ -120,15 +145,38 @@ class Data(metaclass=DataMeta):
         return f"{self.__class__.__name__}({', '.join(f'{k}={v}' for k, v in self.__dict__.items())})"
 
 
+@dataclass
+class Header(Data):
+    seq: int
+    stamp: float
+    frame_id: str
+
+
+# Create an autofill marker type
+class Autofill(Data):
+    """
+    A marker class for autofill data types.
+    This can be used to indicate that a field should be filled automatically.
+    """
+
+    pass
+
+
+@dataclass
+class StampedData(Data):
+    header: Union[Header, Autofill]
+
+
 if __name__ == "__main__":
     # Example usage
     @dataclass
-    class CustomData(Data):
+    class CustomData(StampedData):
         name: str
         value: tuple[int]
 
-    data_instance = CustomData(name="example", value=(42,))
-    print(
-        data_instance
-    )  # Output: name: string, value: struct<sub_name: string, sub_value: int64>
-    # print(CustomData.schema())  # Output: example
+    data_instance = CustomData(
+        header=Header(seq=1, stamp=1234567890.0, frame_id="base_frame"),
+        name="example",
+        value=(42,),
+    )
+    print(data_instance.schema)

@@ -1,10 +1,10 @@
 from dataclasses import dataclass
 
-from carbon.data import Data
+from carbon.data import Data, StampedData
 
 
 @dataclass
-class Quaternion(Data):
+class Quaternion(StampedData):
     x: float
     y: float
     z: float
