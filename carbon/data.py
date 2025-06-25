@@ -1,3 +1,4 @@
+import types
 from dataclasses import dataclass
 from typing import Union
 
@@ -99,7 +100,9 @@ def _generate_arrow_schema(attrs):
                     ),
                 )
             )
-        elif hasattr(annotation, "__origin__") and annotation.__origin__ is Union:
+        elif (type(annotation) is types.UnionType) or (
+            hasattr(annotation, "__origin__") and annotation.__origin__ is Union
+        ):
             union_types = annotation.__args__
             non_none_types = [t for t in union_types if t is not Autofill]
             if len(non_none_types) == 1:
@@ -175,7 +178,7 @@ if __name__ == "__main__":
         value: tuple[int]
 
     data_instance = CustomData(
-        header=Header(seq=1, stamp=1234567890.0, frame_id="base_frame"),
+        header=Autofill(),
         name="example",
         value=(42,),
     )
