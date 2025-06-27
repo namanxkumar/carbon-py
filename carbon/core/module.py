@@ -1,6 +1,5 @@
 from typing import (
     TYPE_CHECKING,
-    Callable,
     Dict,
     List,
     Optional,
@@ -8,13 +7,12 @@ from typing import (
     Set,
     Tuple,
     Type,
-    cast,
 )
 
 from .connection import AsyncConnection, Connection, SyncConnection
+from .datamethod import DataMethod
 
 if TYPE_CHECKING:
-    from .connection import ConnectionMetadata
     from .data import Data
 
 
@@ -44,45 +42,6 @@ def _addindent(s_: str, numSpaces: int):
     s = "\n".join(s)
     s = first + "\n" + s
     return s
-
-
-class DataMethod:
-    def __init__(self, method: Callable):
-        self.method = method
-        self.name: str = method.__name__
-        self.sources: Tuple[Type["Data"], ...] = cast(
-            Tuple[Type["Data"], ...], getattr(method, "_sources", [])
-        )
-        self.sinks: Tuple[Type["Data"], ...] = cast(
-            Tuple[Type["Data"], ...], getattr(method, "_sinks", [])
-        )
-        self.dependencies: Dict["DataMethod", "ConnectionMetadata"] = {}
-        self.dependents: Dict["DataMethod", "ConnectionMetadata"] = {}
-
-        # Queue size is the maximum over the connection metadata for all dependents
-        self.max_queue_size: int = max(
-            (metadata.queue_size for metadata in self.dependents.values()),
-            default=1,
-        )
-        self.source_queue: List[Tuple["Data", ...]] = []
-
-        # TODO: Add support for sticky queues
-        # TODO: Add a method to update and fetch source queue
-        # TODO: Add a message cache and a message cache size for logging and transforms (historical transforms)
-
-    def __call__(self, *args, **kwargs):
-        return self.method(*args, **kwargs)
-
-    def __eq__(self, value):
-        if isinstance(value, DataMethod):
-            return self.method == value.method
-        return self.method == value
-
-    def __repr__(self):
-        return f"{self.name}"
-
-    def __hash__(self):
-        return hash(self.method)
 
 
 class ModuleReference:
@@ -217,10 +176,6 @@ class Module:
         )
         self._ensure_unique_connection(connection)
         self._connections.add(connection)
-        for source_method in connection.source_methods:
-            for sink_method in connection.sink_methods:
-                source_method.dependents[sink_method] = connection.metadata
-                sink_method.dependencies[source_method] = connection.metadata
         return connection
 
     def add_connection(
@@ -232,10 +187,6 @@ class Module:
         """
         self._ensure_unique_connection(connection)
         self._connections.add(connection)
-        for source_method in connection.source_methods:
-            for sink_method in connection.sink_methods:
-                source_method.dependents[sink_method] = connection.metadata
-                sink_method.dependencies[source_method] = connection.metadata
 
     def block_connection(
         self,

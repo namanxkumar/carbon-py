@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from carbon.data import Data, StampedData
+from carbon import Data, StampedData
 
 
 @dataclass

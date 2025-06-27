@@ -1,7 +1,6 @@
 from dataclasses import dataclass
 
-from carbon.data import Data
-from carbon.module import Module, ModuleReference, sink, source
+from carbon import Data, Module, ModuleReference, sink, source
 from complexdata import Image, IMUData, LaserScan, OccupancyGrid, Odometry, Pose, Twist
 
 

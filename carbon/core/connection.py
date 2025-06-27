@@ -1,45 +1,16 @@
-from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Sequence, Tuple, Type
 
 if TYPE_CHECKING:
     from .data import Data
+    from .datamethod import DataMethod
     from .module import Module
 
 
 class ConnectionType(Enum):
-    BLOCKING = "blocking"
-    NON_BLOCKING = "non-blocking"
-
-    def __repr__(self):
-        return f"ConnectionType.{self.name}"
-
-
-@dataclass
-class ConnectionMetadata:
-    type: "ConnectionType"
-    queue_size: int
-    sticky_queue: bool
-
-    def __post_init__(self):
-        if self.queue_size < 1:
-            raise ValueError("Queue size must be at least 1.")
-        if self.type is ConnectionType.BLOCKING:
-            assert not self.sticky_queue, (
-                "Sticky queues are not allowed for blocking connections."
-            )
-            assert self.queue_size == 1, (
-                "Queue size must be 1 for blocking connections."
-            )
-
-    def __repr__(self):
-        if self.type is ConnectionType.BLOCKING:
-            return f"ConnectionMetadata(type={self.type})"
-        else:
-            return (
-                f"ConnectionMetadata(type={self.type}, "
-                f"queue_size={self.queue_size}, sticky_queue={self.sticky_queue})"
-            )
+    MERGE = "merge"
+    SPLIT = "split"
+    DIRECT = "direct"
 
 
 class Connection:
@@ -48,7 +19,7 @@ class Connection:
         source: "Module" | Sequence["Module"],
         sink: "Module" | Sequence["Module"],
         data: Type["Data"] | Sequence[Type["Data"]],
-        type: ConnectionType = ConnectionType.NON_BLOCKING,
+        blocking: bool = False,
         sticky_queue: bool = False,
         queue_size: int = 1,
     ):
@@ -65,11 +36,22 @@ class Connection:
         self.data: Tuple[Type["Data"], ...] | Tuple[Type["Data"]] = (
             tuple(data) if isinstance(data, Sequence) else (data,)
         )
-        self.metadata = ConnectionMetadata(
-            type=type,
-            queue_size=queue_size,
-            sticky_queue=sticky_queue,
-        )
+        self.blocking = blocking
+        self.sticky_queue = sticky_queue
+        self.queue_size = queue_size
+        self.type: ConnectionType = ConnectionType.DIRECT  # Default type
+        self.source_methods: Tuple["DataMethod", ...]
+        self.sink_methods: Tuple["DataMethod", ...]
+
+        if self.queue_size < 1:
+            raise ValueError("Queue size must be at least 1.")
+        if self.blocking:
+            assert not self.sticky_queue, (
+                "Sticky queues are not allowed for blocking connections."
+            )
+            assert self.queue_size == 1, (
+                "Queue size must be 1 for blocking connections."
+            )
 
         if len(self.source) > 1 and len(self.source) != len(self.data):
             raise ValueError(
@@ -88,6 +70,7 @@ class Connection:
             self.source_methods = tuple(
                 [src._sources[(dat,)] for src, dat in zip(self.source, self.data)]
             )
+            self.type = ConnectionType.MERGE
         elif len(self.source) == 1:
             assert self.data in self.source[0]._sources, (
                 f"Source {self.source[0]} must have data type {self.data[0]} defined in its sources."
@@ -102,11 +85,20 @@ class Connection:
             self.sink_methods = tuple(
                 [snk._sinks[(dat,)] for snk, dat in zip(self.sink, self.data)]
             )
+            self.type = ConnectionType.SPLIT
         elif len(self.sink) == 1:
             assert self.data in self.sink[0]._sinks, (
                 f"Sink {self.sink[0]} must have data type {self.data[0]} defined in its sinks."
             )
             self.sink_methods = tuple([self.sink[0]._sinks[self.data]])
+
+        for source_method in self.source_methods:
+            for index, sink_method in enumerate(self.sink_methods):
+                source_method.dependents[sink_method] = self
+                source_method.dependent_splits[sink_method] = (
+                    None if self.type is ConnectionType.DIRECT else index
+                )
+                sink_method.dependencies[source_method] = self
 
     def __hash__(self):
         return hash((self.source, self.sink, self.data))
@@ -122,7 +114,7 @@ class Connection:
     def __repr__(self):
         return (
             f"Connection(source={self.source}, sink={self.sink}, "
-            f"data={self.data}, type={self.metadata.type}, queue_size={self.metadata.queue_size}, sticky_queue={self.metadata.sticky_queue})"
+            f"data={self.data}, blocking={self.blocking}, queue_size={self.queue_size}, sticky_queue={self.sticky_queue})"
         )
 
 
@@ -141,13 +133,13 @@ class AsyncConnection(Connection):
             data=data,
             sticky_queue=sticky_queue,
             queue_size=queue_size,
-            type=ConnectionType.NON_BLOCKING,
+            blocking=False,
         )
 
     def __repr__(self):
         return (
             f"AsyncConnection(source={self.source}, sink={self.sink}, "
-            f"data={self.data}, queue_size={self.metadata.queue_size}, sticky_queue={self.metadata.sticky_queue})"
+            f"data={self.data}, queue_size={self.queue_size}, sticky_queue={self.sticky_queue})"
         )
 
 
@@ -162,7 +154,7 @@ class SyncConnection(Connection):
             source=source,
             sink=sink,
             data=data,
-            type=ConnectionType.BLOCKING,
+            blocking=True,
         )
 
     def __repr__(self):
