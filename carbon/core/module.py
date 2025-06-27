@@ -168,9 +168,7 @@ class Module:
         Create a connection between source and sink modules for the specified data type.
         """
         connection = (
-            AsyncConnection(
-                source, sink, data, sticky_queue=sticky_queue, queue_size=queue_size
-            )
+            AsyncConnection(source, sink, data)
             if not sync
             else SyncConnection(source, sink, data)
         )

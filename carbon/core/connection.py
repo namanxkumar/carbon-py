@@ -37,21 +37,9 @@ class Connection:
             tuple(data) if isinstance(data, Sequence) else (data,)
         )
         self.blocking = blocking
-        self.sticky_queue = sticky_queue
-        self.queue_size = queue_size
         self.type: ConnectionType = ConnectionType.DIRECT  # Default type
         self.source_methods: Tuple["DataMethod", ...]
         self.sink_methods: Tuple["DataMethod", ...]
-
-        if self.queue_size < 1:
-            raise ValueError("Queue size must be at least 1.")
-        if self.blocking:
-            assert not self.sticky_queue, (
-                "Sticky queues are not allowed for blocking connections."
-            )
-            assert self.queue_size == 1, (
-                "Queue size must be 1 for blocking connections."
-            )
 
         if len(self.source) > 1 and len(self.source) != len(self.data):
             raise ValueError(
@@ -114,7 +102,7 @@ class Connection:
     def __repr__(self):
         return (
             f"Connection(source={self.source}, sink={self.sink}, "
-            f"data={self.data}, blocking={self.blocking}, queue_size={self.queue_size}, sticky_queue={self.sticky_queue})"
+            f"data={self.data}, blocking={self.blocking}"
         )
 
 
@@ -124,22 +112,17 @@ class AsyncConnection(Connection):
         source: "Module" | Sequence["Module"],
         sink: "Module" | Sequence["Module"],
         data: Type["Data"] | Sequence[Type["Data"]],
-        sticky_queue: bool = False,
-        queue_size: int = 1,
     ):
         super().__init__(
             source=source,
             sink=sink,
             data=data,
-            sticky_queue=sticky_queue,
-            queue_size=queue_size,
             blocking=False,
         )
 
     def __repr__(self):
         return (
-            f"AsyncConnection(source={self.source}, sink={self.sink}, "
-            f"data={self.data}, queue_size={self.queue_size}, sticky_queue={self.sticky_queue})"
+            f"AsyncConnection(source={self.source}, sink={self.sink}, data={self.data}"
         )
 
 
