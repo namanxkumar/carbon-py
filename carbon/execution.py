@@ -140,7 +140,7 @@ class ExecutionGraph(Module):
                         *[
                             method.input_queue[data_type].pop(0)
                             if (
-                                not method.sticky[data_type]
+                                not method.input_is_sticky[data_type]
                                 or len(method.input_queue[data_type]) > 1
                             )
                             else method.input_queue[data_type][0]
@@ -166,7 +166,7 @@ class ExecutionGraph(Module):
                         # Check queue size
                         if (
                             len(dependent_method.input_queue[queue_key])
-                            >= dependent_method.queue_size[queue_key]
+                            >= dependent_method.input_queue_size[queue_key]
                         ):
                             # If the queue is full, remove the oldest item and add the new one
                             dependent_method.input_queue[queue_key].pop(0)

@@ -15,6 +15,14 @@ class DataMethod:
         self.sinks: Tuple[Type["Data"], ...] = cast(
             Tuple[Type["Data"], ...], getattr(method, "_sinks", tuple())
         )
+        self.source_configuration: Dict[Type["Data"], Dict[str, int | bool]] = cast(
+            Dict[Type["Data"], Dict[str, int | bool]],
+            getattr(method, "_source_configuration", {}),
+        )
+        self.sink_configuration: Dict[Type["Data"], Dict[str, int | bool]] = cast(
+            Dict[Type["Data"], Dict[str, int | bool]],
+            getattr(method, "_sink_configuration", {}),
+        )
 
         self.dependencies: Dict["DataMethod", "Connection"] = {}
         self.dependents: Dict["DataMethod", "Connection"] = {}
@@ -26,8 +34,14 @@ class DataMethod:
         self.input_queue: Dict[Type["Data"], List["Data"]] = {
             sink: [] for sink in self.sinks
         }  # Queues for each sink type
-        self.queue_size: Dict[Type["Data"], int] = {sink: 1 for sink in self.sinks}
-        self.sticky: Dict[Type["Data"], bool] = {sink: True for sink in self.sinks}
+        self.input_queue_size: Dict[Type["Data"], int] = {
+            sink: cast(int, self.sink_configuration.get(sink, {}).get("queue_size", 1))
+            for sink in self.sinks
+        }
+        self.input_is_sticky: Dict[Type["Data"], bool] = {
+            sink: cast(bool, self.sink_configuration.get(sink, {}).get("sticky", False))
+            for sink in self.sinks
+        }
         # TODO: Add support for sticky queues
         # TODO: Add a method to update and fetch source queue
         # TODO: Add a message cache and a message cache size for logging and transforms (historical transforms)

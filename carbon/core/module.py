@@ -1,5 +1,6 @@
 from typing import (
     TYPE_CHECKING,
+    Callable,
     Dict,
     List,
     Optional,
@@ -16,17 +17,74 @@ if TYPE_CHECKING:
     from .data import Data
 
 
-def source(*sources):
-    def decorator(func):
-        setattr(func, "_sources", tuple(sources))
+# Define new class for allowing source and sink decorators to add data types with configuration options
+# to methods in the module.
+
+
+class ConfigurableType:
+    def __init__(
+        self, type_: Type["Data"], queue_size: int = 1, sticky: bool = False, **kwargs
+    ):
+        self.type = type_
+        self.queue_size = queue_size
+        self.sticky = sticky
+        self.config = kwargs
+
+    def __repr__(self):
+        return f"{self.type.__name__}({self.config})"
+
+
+def source(*sources: Type["Data"] | ConfigurableType):
+    def decorator(
+        func: Callable[..., "Data" | Tuple["Data", ...]],
+    ):
+        setattr(
+            func,
+            "_sources",
+            tuple(
+                source.type if isinstance(source, ConfigurableType) else source
+                for source in sources
+            ),
+        )
+        setattr(
+            func,
+            "_source_configuration",
+            {
+                source.type: {
+                    "queue_size": source.queue_size,
+                    "sticky": source.sticky,
+                }
+                for source in sources
+                if isinstance(source, ConfigurableType)
+            },
+        )
         return func
 
     return decorator
 
 
-def sink(*sinks):
-    def decorator(func):
-        setattr(func, "_sinks", tuple(sinks))
+def sink(*sinks: Type["Data"] | ConfigurableType):
+    def decorator(func: Callable[..., "Data" | Tuple["Data", ...] | None]):
+        setattr(
+            func,
+            "_sinks",
+            tuple(
+                sink.type if isinstance(sink, ConfigurableType) else sink
+                for sink in sinks
+            ),
+        )
+        setattr(
+            func,
+            "_sink_configuration",
+            {
+                sink.type: {
+                    "queue_size": sink.queue_size,
+                    "sticky": sink.sticky,
+                }
+                for sink in sinks
+                if isinstance(sink, ConfigurableType)
+            },
+        )
         return func
 
     return decorator
