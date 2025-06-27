@@ -20,8 +20,6 @@ class Connection:
         sink: "Module" | Sequence["Module"],
         data: Type["Data"] | Sequence[Type["Data"]],
         blocking: bool = False,
-        sticky_queue: bool = False,
-        queue_size: int = 1,
     ):
         assert not (
             (isinstance(source, Sequence) and len(source) > 1)
@@ -80,13 +78,17 @@ class Connection:
             )
             self.sink_methods = tuple([self.sink[0]._sinks[self.data]])
 
-        for source_method in self.source_methods:
-            for index, sink_method in enumerate(self.sink_methods):
-                source_method.dependents[sink_method] = self
-                source_method.dependent_splits[sink_method] = (
-                    None if self.type is ConnectionType.DIRECT else index
+        for source_index, source_method in enumerate(self.source_methods):
+            for sink_index, sink_method in enumerate(self.sink_methods):
+                sink_method.dependencies_to_blocking[source_method] = self.blocking
+                sink_method.dependencies_to_merges[source_method] = (
+                    None if self.type is ConnectionType.DIRECT else source_index
                 )
-                sink_method.dependencies[source_method] = self
+
+                source_method.dependents_to_blocking[sink_method] = self.blocking
+                source_method.dependents_to_splits[sink_method] = (
+                    None if self.type is ConnectionType.DIRECT else sink_index
+                )
 
     def __hash__(self):
         return hash((self.source, self.sink, self.data))

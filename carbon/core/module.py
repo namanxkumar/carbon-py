@@ -50,11 +50,11 @@ def source(*sources: Type["Data"] | ConfigurableType):
             func,
             "_source_configuration",
             {
-                source.type: {
+                source_index: {
                     "queue_size": source.queue_size,
                     "sticky": source.sticky,
                 }
-                for source in sources
+                for source_index, source in enumerate(sources)
                 if isinstance(source, ConfigurableType)
             },
         )
@@ -77,11 +77,11 @@ def sink(*sinks: Type["Data"] | ConfigurableType):
             func,
             "_sink_configuration",
             {
-                sink.type: {
+                sink_index: {
                     "queue_size": sink.queue_size,
                     "sticky": sink.sticky,
                 }
-                for sink in sinks
+                for sink_index, sink in enumerate(sinks)
                 if isinstance(sink, ConfigurableType)
             },
         )

@@ -1,12 +1,15 @@
 from threading import Thread
-from typing import Dict, List, Set
+from typing import TYPE_CHECKING, Dict, List, Set
 
-from .core.datamethod import DataMethod
-from .core.module import Module, ModuleReference
+from .core.module import Module
+
+if TYPE_CHECKING:
+    from .core.datamethod import DataMethod
+    from .core.module import ModuleReference
 
 
 class ExecutionGraph(Module):
-    def __init__(self, root_module: ModuleReference, max_threads: int = 1):
+    def __init__(self, root_module: "ModuleReference"):
         super().__init__()
 
         methods = root_module.module.get_methods()
@@ -37,7 +40,7 @@ class ExecutionGraph(Module):
         """
 
         remaining_dependencies = {
-            method: len(method.dependencies) for method in methods
+            method: len(method.dependencies_to_merges) for method in methods
         }
 
         layers: List[Set["DataMethod"]] = []
@@ -71,7 +74,7 @@ class ExecutionGraph(Module):
                     process_layer_mapping[process_index][level_index].add(method)
 
                 remaining_methods.remove(method)
-                for dependent_method in method.dependents.keys():
+                for dependent_method in method.dependents_to_splits.keys():
                     remaining_dependencies[dependent_method] -= 1
 
             level_index += 1
@@ -85,8 +88,8 @@ class ExecutionGraph(Module):
         group_mapping = {method: index for index, method in enumerate(methods)}
 
         for method in methods:
-            for dependency, connection in method.dependencies.items():
-                if connection.blocking:
+            for dependency, blocking in method.dependencies_to_blocking.items():
+                if blocking:
                     node_group = group_mapping[method]
                     dependency_group = group_mapping[dependency]
                     # Check if the dependency is in a different group
@@ -114,64 +117,33 @@ class ExecutionGraph(Module):
                 break
 
             for layer_index, layer in enumerate(process_layers):
-                remaining_methods_and_remaining_data = {
-                    method: list(method.sinks) for method in layer
-                }
+                remaining_methods = list(layer)
 
-                while remaining_methods_and_remaining_data:
-                    # print([method.input_queue for method in layer])
-                    method, remaining_data = (
-                        remaining_methods_and_remaining_data.popitem()
-                    )  # Relies on dict order
-                    new_remaining_data = []
-                    for data_type in remaining_data:
-                        if not method.input_queue[data_type]:
-                            new_remaining_data.append(data_type)
+                while remaining_methods:
+                    method = remaining_methods.pop(0)
 
-                    if new_remaining_data:
+                    if not method.is_ready_for_execution:
                         # If there are no data to process, skip this method and add it back to the remaining methods
-                        remaining_methods_and_remaining_data[method] = (
-                            new_remaining_data
-                        )
+                        remaining_methods.append(method)
                         continue
 
                     # If there are data to process, execute the method
-                    method_output = method(
-                        *[
-                            method.input_queue[data_type].pop(0)
-                            if (
-                                not method.input_is_sticky[data_type]
-                                or len(method.input_queue[data_type]) > 1
-                            )
-                            else method.input_queue[data_type][0]
-                            for data_type in method.sinks
-                        ]
-                    )
+                    method_output = method(*method.pop_data_for_execution())
 
                     # Add the output to the input queue of the dependent methods
                     for (
                         dependent_method,
-                        dependent_connection,
-                    ) in method.dependents.items():
-                        split_index = method.dependent_splits.get(
-                            dependent_method, None
+                        split_source_index,
+                    ) in method.dependents_to_splits.items():
+                        assert method_output is not None, (
+                            f"Method {method.name} returned None, but it should return a valid output for its dependents."
                         )
-                        if split_index is not None:
-                            queue_key = method.sources[split_index]
-                            queue_addition = method_output[split_index]
-                        else:
-                            queue_key = method.sources[0]
-                            queue_addition = method_output
-
-                        # Check queue size
-                        if (
-                            len(dependent_method.input_queue[queue_key])
-                            >= dependent_method.input_queue_size[queue_key]
-                        ):
-                            # If the queue is full, remove the oldest item and add the new one
-                            dependent_method.input_queue[queue_key].pop(0)
-
-                        dependent_method.input_queue[queue_key].append(queue_addition)
+                        dependent_method.receive_data(
+                            method,
+                            method_output
+                            if split_source_index is None
+                            else method_output[split_source_index],
+                        )
 
     def execute(self):
         """Execute the methods in the execution order defined by the layers."""
