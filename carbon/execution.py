@@ -40,7 +40,7 @@ class ExecutionGraph(Module):
         """
 
         remaining_dependencies = {
-            method: len(method.dependencies_to_merges) for method in methods
+            method: len(method.dependencies) for method in methods
         }
 
         layers: List[Set["DataMethod"]] = []
@@ -74,7 +74,7 @@ class ExecutionGraph(Module):
                     process_layer_mapping[process_index][level_index].add(method)
 
                 remaining_methods.remove(method)
-                for dependent_method in method.dependents_to_splits.keys():
+                for dependent_method in method.dependents:
                     remaining_dependencies[dependent_method] -= 1
 
             level_index += 1
@@ -128,7 +128,7 @@ class ExecutionGraph(Module):
                         continue
 
                     # If there are data to process, execute the method
-                    method_output = method(*method.pop_data_for_execution())
+                    method_output = method.execute()
 
                     # Add the output to the input queue of the dependent methods
                     for (

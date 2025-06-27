@@ -80,14 +80,19 @@ class Connection:
 
         for source_index, source_method in enumerate(self.source_methods):
             for sink_index, sink_method in enumerate(self.sink_methods):
-                sink_method.dependencies_to_blocking[source_method] = self.blocking
-                sink_method.dependencies_to_merges[source_method] = (
-                    None if self.type is ConnectionType.DIRECT else source_index
+                sink_method.add_dependency(
+                    source_method,
+                    merge_sink_index=(
+                        None if self.type is ConnectionType.DIRECT else source_index
+                    ),
+                    blocking=self.blocking,
                 )
-
-                source_method.dependents_to_blocking[sink_method] = self.blocking
-                source_method.dependents_to_splits[sink_method] = (
-                    None if self.type is ConnectionType.DIRECT else sink_index
+                source_method.add_dependent(
+                    sink_method,
+                    split_source_index=(
+                        None if self.type is ConnectionType.DIRECT else sink_index
+                    ),
+                    blocking=self.blocking,
                 )
 
     def __hash__(self):

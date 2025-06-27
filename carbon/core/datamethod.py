@@ -25,20 +25,20 @@ class DataMethod:
             getattr(method, "_sink_configuration", {}),
         )
 
-        self.input_queue: Dict[int, List["Data"]] = {
+        self._input_queue: Dict[int, List["Data"]] = {
             sink_index: [] for sink_index in self.sink_indices
         }  # Queues for each sink type
-        self.remaining_for_execution: Set[int] = set(
+        self._remaining_for_execution: Set[int] = set(
             self.sink_indices
         )  # Indices of sinks that are not ready for execution
 
-        self.input_queue_size: Dict[int, int] = {
+        self._input_queue_size: Dict[int, int] = {
             sink_index: cast(
                 int, self.sink_configuration.get(sink_index, {}).get("queue_size", 1)
             )
             for sink_index in self.sink_indices
         }
-        self.input_is_sticky: Dict[int, bool] = {
+        self._input_is_sticky: Dict[int, bool] = {
             sink_index: cast(
                 bool, self.sink_configuration.get(sink_index, {}).get("sticky", False)
             )
@@ -48,19 +48,53 @@ class DataMethod:
         self.dependencies_to_merges: Dict[
             "DataMethod", Optional[int]
         ] = {}  # Sink index for each dependency (None if all sinks are received from the dependency (direct connection), int indicating sink index of the data if only a part of the sinks is received)
-        self.dependencies_to_blocking: Dict["DataMethod", bool] = {}
+        self.dependencies_to_blocking: Dict[
+            "DataMethod", bool
+        ] = {}  # Whether the dependency is blocking or not
 
         self.dependents_to_splits: Dict[
             "DataMethod", Optional[int]
         ] = {}  # Source index for each dependent (None if all sources are sent to the dependent (direct connection), int indicating source index of the data if only a part of the sources is sent)
-        self.dependents_to_blocking: Dict["DataMethod", bool] = {}
+        self.dependents_to_blocking: Dict[
+            "DataMethod", bool
+        ] = {}  # Whether the dependent is blocking or not
 
         # TODO: Add a message cache and a message cache size for logging and transforms (historical transforms)
+
+    def add_dependency(
+        self,
+        dependency: "DataMethod",
+        merge_sink_index: Optional[int],
+        blocking: bool,
+    ) -> None:
+        """Add a dependency to the method."""
+        self.dependencies_to_merges[dependency] = merge_sink_index
+        self.dependencies_to_blocking[dependency] = blocking
+
+    def add_dependent(
+        self,
+        dependent: "DataMethod",
+        split_source_index: Optional[int],
+        blocking: bool,
+    ) -> None:
+        """Add a dependent to the method."""
+        self.dependents_to_splits[dependent] = split_source_index
+        self.dependents_to_blocking[dependent] = blocking
+
+    @property
+    def dependencies(self) -> Set["DataMethod"]:
+        """Get the dependencies of the method."""
+        return set(self.dependencies_to_merges.keys())
+
+    @property
+    def dependents(self) -> Set["DataMethod"]:
+        """Get the dependents of the method."""
+        return set(self.dependents_to_splits.keys())
 
     @property
     def is_ready_for_execution(self) -> bool:
         """Check if the method is ready for execution."""
-        return not self.remaining_for_execution
+        return not self._remaining_for_execution
 
     def pop_data_for_execution(self) -> List["Data"]:
         """Pop data from the input queue for execution."""
@@ -71,16 +105,16 @@ class DataMethod:
         data = []
         for sink_index in self.sink_indices:
             if (
-                self.input_is_sticky[sink_index]
-                and len(self.input_queue[sink_index]) == 1
+                self._input_is_sticky[sink_index]
+                and len(self._input_queue[sink_index]) == 1
             ):
                 # If the input is sticky and there's only one item, keep it
-                data.append(self.input_queue[sink_index][0])
+                data.append(self._input_queue[sink_index][0])
             else:
-                data.append(self.input_queue[sink_index].pop(0))
+                data.append(self._input_queue[sink_index].pop(0))
 
-                if len(self.input_queue[sink_index]) == 0:
-                    self.remaining_for_execution.add(sink_index)
+                if len(self._input_queue[sink_index]) == 0:
+                    self._remaining_for_execution.add(sink_index)
         return data
 
     def receive_data(
@@ -94,32 +128,36 @@ class DataMethod:
             # If the dependency is a direct connection, add all data to the input queue
             for sink_index, item in zip(self.sink_indices, data):
                 if (
-                    len(self.input_queue[sink_index])
-                    >= self.input_queue_size[sink_index]
+                    len(self._input_queue[sink_index])
+                    >= self._input_queue_size[sink_index]
                 ):
                     # If the queue is full, remove the oldest item
-                    self.input_queue[sink_index].pop(0)
+                    self._input_queue[sink_index].pop(0)
 
-                self.input_queue[sink_index].append(item)
+                self._input_queue[sink_index].append(item)
 
-                self.remaining_for_execution.discard(sink_index)
+                self._remaining_for_execution.discard(sink_index)
         else:
             assert isinstance(data, Data) or len(data) == 1, (
                 "Expected data to be a singleton tuple or a Data instance"
             )
 
             if (
-                len(self.input_queue[merge_sink_index])
-                >= self.input_queue_size[merge_sink_index]
+                len(self._input_queue[merge_sink_index])
+                >= self._input_queue_size[merge_sink_index]
             ):
                 # If the queue is full, remove the oldest item
-                self.input_queue[merge_sink_index].pop(0)
+                self._input_queue[merge_sink_index].pop(0)
 
-            self.input_queue[merge_sink_index].append(
+            self._input_queue[merge_sink_index].append(
                 data[0] if isinstance(data, tuple) else data
             )
 
-            self.remaining_for_execution.discard(merge_sink_index)
+            self._remaining_for_execution.discard(merge_sink_index)
+
+    def execute(self) -> Optional[Tuple["Data", ...]]:
+        """Execute the method and return the output."""
+        return self.__call__(*self.pop_data_for_execution())
 
     def __call__(self, *args, **kwargs) -> Optional[Tuple["Data", ...]]:
         output = self.method(*args, **kwargs)
