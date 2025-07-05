@@ -68,17 +68,24 @@ class DataMeta(type):
             # Set the new __post_init__ method
             attrs["__post_init__"] = chained_post_init
 
-        return dataclass(
-            cast(
-                type,
-                super().__new__(
-                    cls,
-                    name,
-                    bases,
-                    attrs,
-                ),
-            )
+        new_cls = super().__new__(
+            cls,
+            name,
+            bases,
+            attrs,
         )
+
+        # Check if the class is a dataclass
+        if not attrs.get("__dataclass_fields__", None):
+            # If not a dataclass, convert to a dataclass
+            return dataclass(
+                cast(
+                    type,
+                    new_cls,
+                )
+            )
+        else:
+            return new_cls
 
     def __repr__(cls):
         return f"{cls.__name__}({', '.join(f'{k}: {v.__name__}' for k, v in cls.__annotations__.items())})"
