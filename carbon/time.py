@@ -4,13 +4,10 @@ This module can be used to synchronize other modules based on time.
 It is automatically added to the system root module.
 """
 
-from dataclasses import dataclass
-
 from core.data import Data
 from core.module import Module, source
 
 
-@dataclass
 class TimeData(Data):
     """
     Data class representing time data.

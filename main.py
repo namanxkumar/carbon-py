@@ -1,20 +1,17 @@
 import sys
 import termios
 import tty
-from dataclasses import dataclass
 from typing import Tuple
 
 from carbon import ConfigurableType, Data, Module, ModuleReference, sink, source
 from carbon.execution import ExecutionGraph
 
 
-@dataclass
 class TeleopCommand(Data):
     left: float
     right: float
 
 
-@dataclass
 class JointState(Data):
     position: float
     velocity: float

@@ -1,10 +1,27 @@
+import sys
 import types
 from dataclasses import Field, dataclass
 from typing import Dict, List, Union, cast
 
 import pyarrow as pa
 
+if sys.version_info >= (3, 11):
+    from typing import dataclass_transform
+else:
+    from typing_extensions import dataclass_transform
 
+
+class Autofill:
+    """
+    Marker class for fields that should be automatically filled in by the framework.
+    This is used to indicate that a field should be populated with a default value
+    or by the framework during data processing.
+    """
+
+    pass
+
+
+@dataclass_transform()
 class DataMeta(type):
     """
     Metaclass for Data class to handle type annotations and schema generation.
@@ -34,11 +51,33 @@ class DataMeta(type):
                 pa.struct(base_schema).fields + pa.struct(new_schema).fields
             )
 
-        return super().__new__(
-            cls,
-            name,
-            bases,
-            dict(attrs, _schema=new_schema),
+        attrs["_schema"] = new_schema
+
+        # --- Enforce super().__post_init__() chaining ---
+        base_class_post_init = getattr(bases[0], "__post_init__", None)
+        new_class_post_init = attrs.get("__post_init__", None)
+
+        if base_class_post_init or new_class_post_init:
+
+            def chained_post_init(self, *args, **kwargs):
+                if base_class_post_init:
+                    base_class_post_init(self)
+                if new_class_post_init:
+                    new_class_post_init(self, *args, **kwargs)
+
+            # Set the new __post_init__ method
+            attrs["__post_init__"] = chained_post_init
+
+        return dataclass(
+            cast(
+                type,
+                super().__new__(
+                    cls,
+                    name,
+                    bases,
+                    attrs,
+                ),
+            )
         )
 
     def __repr__(cls):
@@ -129,9 +168,6 @@ class Data(metaclass=DataMeta):
     Subclass this and define fields using type annotations to create custom datatypes.
     """
 
-    def __init__(self):
-        pass
-
     @property
     def schema(self) -> pa.Schema:
         """
@@ -204,12 +240,12 @@ class Data(metaclass=DataMeta):
         fields_dict: Dict[str, Field] = getattr(cls, "__dataclass_fields__", {})
 
         # Get field names and types for the current class
-        for field_name, field in fields_dict.items():
+        for field_name, field_ in fields_dict.items():
             if field_name not in data_dict:
                 raise ValueError(f"Missing field '{field_name}' in data dictionary.")
 
             value = data_dict[field_name]
-            field_type = cast(type, field.type)
+            field_type = cast(type, field_.type)
 
             if hasattr(field_type, "__origin__") and field_type.__origin__ is list:
                 # Handle lists
@@ -329,53 +365,90 @@ class Data(metaclass=DataMeta):
 
         return cls.from_arrow_compatible_dict(data_dict)
 
+    def _get_autofill_fields(self, field_type: type):
+        """
+        Autofill fields that are marked with Autofill.
+        This method can be overridden in subclasses to provide custom autofill logic.
+        """
+        if field_type is Header:
+            # Example autofill logic for Header
+            return Header(seq=0, stamp=0.0, frame_id="default_frame")
+        else:
+            raise NotImplementedError(
+                f"Autofill logic not implemented for field type: {field_type.__name__}"
+            )
 
-@dataclass
+    def __post_init__(self):
+        """
+        Post-initialization hook for Data classes.
+        This can still be overridden in subclasses to add custom initialization logic, however
+        this implementation will always run first to ensure the base class is initialized.
+        """
+        # Replace fields with Autofill if they are not set
+        for field_name, field_value in self.__dict__.items():
+            if isinstance(field_value, Autofill):
+                # Replace with a default value or leave as Autofill
+                # Get field type from annotations
+                field_type = cast(
+                    type,
+                    cast(
+                        Field,
+                        cast(Dict, getattr(self.__class__, "__dataclass_fields__")).get(
+                            field_name
+                        ),
+                    ).type,
+                )
+                assert isinstance(field_type, types.UnionType) or (
+                    hasattr(field_type, "__origin__") and field_type.__origin__ is Union
+                ), (
+                    f"Field '{field_name}' must be a Union type with Autofill and the type to be autofilled."
+                )
+
+                # Handle Union types
+                union_types = field_type.__args__
+                non_none_types = [t for t in union_types if t is not Autofill]
+
+                if len(non_none_types) == 1:
+                    field_type = non_none_types[0]
+                else:
+                    raise TypeError(f"Unsupported Union type: {field_type}")
+
+                self.__dict__[field_name] = self._get_autofill_fields(
+                    field_type=field_type
+                )
+
+
 class Header(Data):
     seq: int
     stamp: float
     frame_id: str
 
 
-# Create an autofill marker type
-class Autofill(Data):
-    """
-    A marker class for autofill data types.
-    This can be used to indicate that a field should be filled automatically.
-    """
-
-    pass
-
-
-@dataclass
 class StampedData(Data):
     header: Union[Header, Autofill]
 
 
 if __name__ == "__main__":
     # Example usage
-    @dataclass
     class NestedData(Data):
         value: int
         description: str
 
-    @dataclass
-    class CustomData(Data):
+    class CustomData(StampedData):
         nested: NestedData
         name: str
         value: List[int]
 
     data_instance = CustomData(
-        nested=NestedData(value=41, description="Example nested data"),
+        header=Autofill(),
+        nested=NestedData(value=42, description="Example nested data"),
         name="example",
         value=[42],
     )
 
     record_batch = data_instance.to_arrow_record_batch()
-    # print(record_batch)
 
     table = data_instance.to_arrow_table()
-    # print(table)
 
     # Convert back from RecordBatch
     new_instance = CustomData.from_arrow_record_batch(record_batch)
