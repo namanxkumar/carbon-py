@@ -14,8 +14,6 @@ else:
 class Autofill:
     """
     Marker class for fields that should be automatically filled in by the framework.
-    This is used to indicate that a field should be populated with a default value
-    or by the framework during data processing.
     """
 
     pass

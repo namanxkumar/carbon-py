@@ -1,6 +1,6 @@
 from typing import Callable, Dict, List, Optional, Set, Tuple, Type, cast
 
-from .data import Data
+from carbon.core.data import Data
 
 
 class DataMethod:

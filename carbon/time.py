@@ -4,8 +4,8 @@ This module can be used to synchronize other modules based on time.
 It is automatically added to the system root module.
 """
 
-from core.data import Data
-from core.module import Module, source
+from carbon.core.data import Data
+from carbon.core.module import Module, source
 
 
 class TimeData(Data):

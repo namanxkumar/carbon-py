@@ -1,11 +1,11 @@
 from threading import Thread
 from typing import TYPE_CHECKING, Dict, List, Set
 
-from .core.module import Module
+from carbon.core.module import Module
 
 if TYPE_CHECKING:
-    from .core.datamethod import DataMethod
-    from .core.module import ModuleReference
+    from carbon.core.datamethod import DataMethod
+    from carbon.core.module import ModuleReference
 
 
 class ExecutionGraph(Module):

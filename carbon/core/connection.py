@@ -2,9 +2,9 @@ from enum import Enum
 from typing import TYPE_CHECKING, Sequence, Tuple, Type
 
 if TYPE_CHECKING:
-    from .data import Data
-    from .datamethod import DataMethod
-    from .module import Module
+    from carbon.core.data import Data
+    from carbon.core.datamethod import DataMethod
+    from carbon.core.module import Module
 
 
 class ConnectionType(Enum):

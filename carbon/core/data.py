@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Union, cast, get_args, get_origin
 
 import pyarrow as pa
 
-from .data_utilities import Autofill, DataMeta
+from carbon.core.data_utilities import Autofill, DataMeta
 
 
 def flatten_single_row_arrow_dict(data_dict: Dict[str, List[Any]]) -> Dict[str, Any]:
@@ -196,33 +196,33 @@ class Data(metaclass=DataMeta):
         this implementation will always run first to ensure the base class is initialized.
         """
         for field_name, field_value in self.__dict__.items():
-            if isinstance(field_value, Autofill):
-                field_type = cast(
-                    type,
-                    cast(
-                        Field,
-                        cast(Dict, getattr(self.__class__, "__dataclass_fields__")).get(
-                            field_name
-                        ),
-                    ).type,
-                )
+            if not isinstance(field_value, Autofill):
+                continue
 
-                assert isinstance(field_type, types.UnionType) or (
-                    hasattr(field_type, "__origin__") and field_type.__origin__ is Union
-                ), (
-                    f"Field '{field_name}' must be a Union type with Autofill and the type to be autofilled."
-                )
+            field_type = cast(
+                type,
+                cast(
+                    Field,
+                    cast(Dict, getattr(self.__class__, "__dataclass_fields__")).get(
+                        field_name
+                    ),
+                ).type,
+            )
 
-                non_none_types = [t for t in field_type.__args__ if t is not Autofill]
+            assert isinstance(field_type, types.UnionType) or (
+                hasattr(field_type, "__origin__") and field_type.__origin__ is Union
+            ), (
+                f"Field '{field_name}' must be a Union type with Autofill and the type to be autofilled."
+            )
 
-                if len(non_none_types) == 1:
-                    field_type = non_none_types[0]
-                else:
-                    raise TypeError(f"Unsupported Union type: {field_type}")
+            non_none_types = [t for t in field_type.__args__ if t is not Autofill]
 
-                self.__dict__[field_name] = self._get_autofill_fields(
-                    field_type=field_type
-                )
+            if len(non_none_types) == 1:
+                field_type = non_none_types[0]
+            else:
+                raise TypeError(f"Unsupported Union type: {field_type}")
+
+            self.__dict__[field_name] = self._get_autofill_fields(field_type=field_type)
 
 
 class Header(Data):

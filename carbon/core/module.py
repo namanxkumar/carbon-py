@@ -10,8 +10,8 @@ from typing import (
     Type,
 )
 
-from .connection import AsyncConnection, Connection, SyncConnection
-from .datamethod import DataMethod
+from carbon.core.connection import AsyncConnection, Connection, SyncConnection
+from carbon.core.datamethod import DataMethod
 
 if TYPE_CHECKING:
     from .data import Data
