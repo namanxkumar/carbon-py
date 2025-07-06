@@ -82,8 +82,8 @@ class Teleop(Module):
             fd = sys.stdin.fileno()
             old_settings = termios.tcgetattr(fd)
             try:
-                # Set raw mode and turn off echo
-                tty.setraw(fd)
+                # Set cbreak mode and turn off echo
+                tty.setcbreak(fd)
                 new_settings = termios.tcgetattr(fd)
                 new_settings[3] = new_settings[3] & ~termios.ECHO  # lflags
                 termios.tcsetattr(fd, termios.TCSADRAIN, new_settings)

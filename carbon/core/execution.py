@@ -1,7 +1,5 @@
-from threading import Thread
+from threading import Event, Thread
 from typing import TYPE_CHECKING, Dict, List, Set
-
-import pyarrow as pa
 
 from carbon.core.data import convert_data_to_arrow
 
@@ -18,7 +16,8 @@ class ExecutionGraph:
         self.layers, self.layer_mapping, self.process_layer_mapping = (
             self._build_layers(methods)
         )
-        self.pool = pa.default_memory_pool()
+        self.threads: Dict[int, Thread] = {}
+        self.stop_event = Event()  # Event to signal threads to stop
 
     def _build_layers(self, methods: Set["DataMethod"]):
         """Compute a topological ordering of the functions.
@@ -112,7 +111,7 @@ class ExecutionGraph:
         """Execute the methods in the given process group."""
         process_layers = self.process_layer_mapping[process_index]
 
-        for i in range(2):
+        while not self.stop_event.is_set():
             # Check if there are any methods to execute in the current layer
             if not process_layers:
                 break
@@ -120,7 +119,7 @@ class ExecutionGraph:
             for layer_index, layer in enumerate(process_layers):
                 remaining_methods = list(layer)
 
-                while remaining_methods:
+                while remaining_methods and not self.stop_event.is_set():
                     method = remaining_methods.pop(0)
 
                     if not method.is_ready_for_execution:
@@ -151,21 +150,22 @@ class ExecutionGraph:
                             else method_output[split_source_index],
                         )
 
-    def execute(self):
-        """Execute the methods in the execution order defined by the layers."""
+    def execute(self, graceful_timeout: float = 5.0):
+        """Execute the methods in the execution order defined by the layers. Gracefully handle Ctrl+C."""
+        try:
+            for process in self.processes:
+                # Create a new thread for each process group
+                self.threads[process] = Thread(
+                    target=self._execute_process_group, args=(process,)
+                )
+                self.threads[process].start()
 
-        threads: Dict[int, Thread] = {}
-
-        # Create a new process for each process group since shared memory is required for the current implementation
-        # TODO: Replace this with zero copy pyarrow shared memory between processes
-        for process in self.processes:
-            # Create a new thread for each process group
-            threads[process] = Thread(
-                target=self._execute_process_group, args=(process,)
-            )
-            threads[process].start()
-
-        # Wait for all processes to finish
-        for thread in threads.values():
-            thread.join()
-        print(self.pool.num_allocations())
+            # Wait for all processes to finish
+            for thread in self.threads.values():
+                thread.join()
+        except KeyboardInterrupt:
+            print("\nReceived Ctrl+C, attempting graceful shutdown...")
+            self.stop_event.set()
+            for thread in self.threads.values():
+                thread.join(timeout=graceful_timeout)
+            print("\nAll threads terminated (or timed out). Exiting.")
