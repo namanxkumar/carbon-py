@@ -5,6 +5,43 @@ import pyarrow as pa
 from carbon.core.data import Data
 
 
+class Queue:
+    def __init__(self, data_type: Type[Data], size: int = 1, sticky: bool = False):
+        self.size = size
+        self.sticky = sticky
+        self.data_type = data_type
+        self.arrow_table: pa.Table = pa.Table.from_pylist(
+            [], schema=data_type.get_schema()
+        )
+
+    def append(self, item: Data) -> None:
+        if self.arrow_table.num_rows >= self.size:
+            table_to_merge = self.arrow_table.slice(1)
+        else:
+            table_to_merge = self.arrow_table
+        self.arrow_table = pa.concat_tables([table_to_merge, item.to_arrow_table()])
+
+    def pop(self) -> Data:
+        assert not self.is_empty(), "Queue is empty, cannot pop data."
+
+        data = self.data_type.from_arrow(self.arrow_table.take([0]))
+
+        if self.sticky and self.arrow_table.num_rows == 1:
+            # If the queue is sticky, we do not remove the item from the queue
+            return data
+
+        # If the queue is not sticky, we remove the item from the queue
+        self.arrow_table = self.arrow_table.slice(1)
+
+        return data
+
+    def is_empty(self) -> bool:
+        return self.arrow_table.num_rows == 0
+
+    def __len__(self) -> int:
+        return self.arrow_table.num_rows
+
+
 class DataMethod:
     def __init__(self, method: Callable):
         self.method = method
@@ -27,29 +64,24 @@ class DataMethod:
             getattr(method, "_sink_configuration", {}),
         )
 
-        self._input_queue: Dict[int, pa.Table] = {
-            sink_index: pa.Table.from_pylist(
-                [], schema=self.sinks[sink_index].get_schema()
+        self._input_queue: Dict[int, Queue] = {
+            sink_index: Queue(
+                self.sinks[sink_index],
+                size=cast(
+                    int,
+                    self.sink_configuration.get(sink_index, {}).get("queue_size", 1),
+                ),
+                sticky=cast(
+                    bool,
+                    self.sink_configuration.get(sink_index, {}).get("sticky", False),
+                ),
             )
             for sink_index in self.sink_indices
-        }  # Queues for each sink type
+        }
 
         self._remaining_for_execution: Set[int] = set(
             self.sink_indices
         )  # Indices of sinks that are not ready for execution
-
-        self._input_queue_size: Dict[int, int] = {
-            sink_index: cast(
-                int, self.sink_configuration.get(sink_index, {}).get("queue_size", 1)
-            )
-            for sink_index in self.sink_indices
-        }
-        self._input_is_sticky: Dict[int, bool] = {
-            sink_index: cast(
-                bool, self.sink_configuration.get(sink_index, {}).get("sticky", False)
-            )
-            for sink_index in self.sink_indices
-        }
 
         self.dependencies_to_merges: Dict[
             "DataMethod", Optional[int]
@@ -110,18 +142,10 @@ class DataMethod:
 
         data = []
         for sink_index in self.sink_indices:
-            data.append(
-                self.sinks[sink_index].from_arrow(
-                    self._input_queue[sink_index].take([0])
-                )
-            )
-            if not (
-                self._input_is_sticky[sink_index]
-                and self._input_queue[sink_index].num_rows == 1
-            ):
-                self._input_queue[sink_index] = self._input_queue[sink_index].slice(1)
-                if self._input_queue[sink_index].num_rows == 0:
-                    self._remaining_for_execution.add(sink_index)
+            data.append(self._input_queue[sink_index].pop())
+
+            if self._input_queue[sink_index].is_empty():
+                self._remaining_for_execution.add(sink_index)
         return data
 
     def receive_data(
@@ -134,46 +158,16 @@ class DataMethod:
 
             # If the dependency is a direct connection, add all data to the input queue
             for sink_index, item in zip(self.sink_indices, data):
-                if (
-                    self._input_queue[sink_index].num_rows
-                    >= self._input_queue_size[sink_index]
-                ):
-                    # If the queue is full, remove the oldest item
-                    table_to_merge = self._input_queue[sink_index].slice(1)
-                else:
-                    table_to_merge = self._input_queue[sink_index]
-
-                self._input_queue[sink_index] = pa.concat_tables(
-                    [
-                        table_to_merge,
-                        item.to_arrow_table(),
-                    ]
-                )
-
+                self._input_queue[sink_index].append(item)
                 self._remaining_for_execution.discard(sink_index)
         else:
             assert isinstance(data, Data) or len(data) == 1, (
                 "Expected data to be a singleton tuple or a Data instance"
             )
 
-            if (
-                self._input_queue[merge_sink_index].num_rows
-                >= self._input_queue_size[merge_sink_index]
-            ):
-                # If the queue is full, remove the oldest item
-                table_to_merge = self._input_queue[merge_sink_index].slice(1)
-            else:
-                table_to_merge = self._input_queue[merge_sink_index]
-
-            self._input_queue[merge_sink_index] = pa.concat_tables(
-                [
-                    table_to_merge,
-                    data[0].to_arrow_table()
-                    if isinstance(data, tuple)
-                    else data.to_arrow_table(),
-                ]
+            self._input_queue[merge_sink_index].append(
+                data[0] if isinstance(data, tuple) else data
             )
-
             self._remaining_for_execution.discard(merge_sink_index)
 
     def execute(self) -> Optional[Tuple["Data", ...]]:
