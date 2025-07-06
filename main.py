@@ -4,7 +4,7 @@ import tty
 from typing import Tuple
 
 from carbon import ConfigurableType, Data, Module, ModuleReference, sink, source
-from carbon.execution import ExecutionGraph
+from carbon.core.execution import ExecutionGraph
 
 
 class TeleopCommand(Data):

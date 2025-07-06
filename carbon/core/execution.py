@@ -1,23 +1,24 @@
 from threading import Thread
 from typing import TYPE_CHECKING, Dict, List, Set
 
-from carbon.core.module import Module
+import pyarrow as pa
+
+from carbon.core.data import convert_data_to_arrow
 
 if TYPE_CHECKING:
     from carbon.core.datamethod import DataMethod
     from carbon.core.module import ModuleReference
 
 
-class ExecutionGraph(Module):
+class ExecutionGraph:
     def __init__(self, root_module: "ModuleReference"):
-        super().__init__()
-
         methods = root_module.module.get_methods()
 
         self.processes, self.process_mapping = self._build_processes(methods)
         self.layers, self.layer_mapping, self.process_layer_mapping = (
             self._build_layers(methods)
         )
+        self.pool = pa.default_memory_pool()
 
     def _build_layers(self, methods: Set["DataMethod"]):
         """Compute a topological ordering of the functions.
@@ -111,7 +112,7 @@ class ExecutionGraph(Module):
         """Execute the methods in the given process group."""
         process_layers = self.process_layer_mapping[process_index]
 
-        while True:
+        for i in range(2):
             # Check if there are any methods to execute in the current layer
             if not process_layers:
                 break
@@ -129,6 +130,11 @@ class ExecutionGraph(Module):
 
                     # If there are data to process, execute the method
                     method_output = method.execute()
+                    method_output = (
+                        convert_data_to_arrow(method_output)
+                        if method_output is not None
+                        else None
+                    )
 
                     # Add the output to the input queue of the dependent methods
                     for (
@@ -147,6 +153,7 @@ class ExecutionGraph(Module):
 
     def execute(self):
         """Execute the methods in the execution order defined by the layers."""
+
         threads: Dict[int, Thread] = {}
 
         # Create a new process for each process group since shared memory is required for the current implementation
@@ -161,3 +168,4 @@ class ExecutionGraph(Module):
         # Wait for all processes to finish
         for thread in threads.values():
             thread.join()
+        print(self.pool.num_allocations())

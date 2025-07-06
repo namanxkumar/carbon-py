@@ -1,45 +1,23 @@
-from typing import Callable, Dict, List, Optional, Set, Tuple, Type, cast
+from typing import (
+    TYPE_CHECKING,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Set,
+    Tuple,
+    Type,
+    Union,
+    cast,
+    overload,
+)
 
-import pyarrow as pa
+if TYPE_CHECKING:
+    import pyarrow as pa
 
-from carbon.core.data import Data
+    from carbon.core.data import Data
 
-
-class Queue:
-    def __init__(self, data_type: Type[Data], size: int = 1, sticky: bool = False):
-        self.size = size
-        self.sticky = sticky
-        self.data_type = data_type
-        self.arrow_table: pa.Table = pa.Table.from_pylist(
-            [], schema=data_type.get_schema()
-        )
-
-    def append(self, item: Data) -> None:
-        if self.arrow_table.num_rows >= self.size:
-            table_to_merge = self.arrow_table.slice(1)
-        else:
-            table_to_merge = self.arrow_table
-        self.arrow_table = pa.concat_tables([table_to_merge, item.to_arrow_table()])
-
-    def pop(self) -> Data:
-        assert not self.is_empty(), "Queue is empty, cannot pop data."
-
-        data = self.data_type.from_arrow(self.arrow_table.take([0]))
-
-        if self.sticky and self.arrow_table.num_rows == 1:
-            # If the queue is sticky, we do not remove the item from the queue
-            return data
-
-        # If the queue is not sticky, we remove the item from the queue
-        self.arrow_table = self.arrow_table.slice(1)
-
-        return data
-
-    def is_empty(self) -> bool:
-        return self.arrow_table.num_rows == 0
-
-    def __len__(self) -> int:
-        return self.arrow_table.num_rows
+from carbon.core.data import DataQueue
 
 
 class DataMethod:
@@ -64,8 +42,8 @@ class DataMethod:
             getattr(method, "_sink_configuration", {}),
         )
 
-        self._input_queue: Dict[int, Queue] = {
-            sink_index: Queue(
+        self._input_queue: Dict[int, DataQueue] = {
+            sink_index: DataQueue(
                 self.sinks[sink_index],
                 size=cast(
                     int,
@@ -142,26 +120,39 @@ class DataMethod:
 
         data = []
         for sink_index in self.sink_indices:
-            data.append(self._input_queue[sink_index].pop())
+            data.append(self._input_queue[sink_index].pop())  # Memory is allocated
 
             if self._input_queue[sink_index].is_empty():
                 self._remaining_for_execution.add(sink_index)
         return data
 
+    @overload
     def receive_data(
-        self, dependency: "DataMethod", data: Data | Tuple["Data", ...]
+        self, dependency: "DataMethod", data: Union["Data", Tuple["Data", ...]]
     ) -> None:
-        """Receive data from a dependency and add it to the input queue."""
+        """Receive Data from a dependency and add it to the input queue."""
+        ...
+
+    @overload
+    def receive_data(
+        self, dependency: "DataMethod", data: "pa.Table" | Tuple["pa.Table", ...]
+    ) -> None:
+        """Receive Arrow Table from a dependency and add it to the input queue (Zero Copy)."""
+        ...
+
+    def receive_data(self, dependency, data):
         merge_sink_index = self.dependencies_to_merges[dependency]
         if merge_sink_index is None:
             assert isinstance(data, tuple), "Expected data to be a tuple"
 
             # If the dependency is a direct connection, add all data to the input queue
             for sink_index, item in zip(self.sink_indices, data):
-                self._input_queue[sink_index].append(item)
+                self._input_queue[sink_index].append(
+                    item
+                )  # No memory allocation (ZERO COPY)
                 self._remaining_for_execution.discard(sink_index)
         else:
-            assert isinstance(data, Data) or len(data) == 1, (
+            assert not isinstance(data, (list, tuple)) or len(data) == 1, (
                 "Expected data to be a singleton tuple or a Data instance"
             )
 

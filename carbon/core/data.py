@@ -1,6 +1,6 @@
 import types
 from dataclasses import Field
-from typing import Dict, List, Union, cast, get_args, get_origin
+from typing import Dict, List, Tuple, Type, Union, cast, get_args, get_origin
 
 import pyarrow as pa
 
@@ -226,6 +226,16 @@ class Data(metaclass=DataMeta):
             self.__dict__[field_name] = self._get_autofill_fields(field_type=field_type)
 
 
+def convert_data_to_arrow(
+    data: Union[Data, Tuple[Data, ...]],
+) -> Union[pa.Table, Tuple[pa.Table, ...]]:
+    """Convert Data or tuple of Data to Arrow Table or tuple of Arrow Tables."""
+    if isinstance(data, Data):
+        return data.to_arrow_table()
+    elif isinstance(data, tuple):
+        return tuple(item.to_arrow_table() for item in data)
+
+
 class Header(Data):
     seq: int
     stamp: float
@@ -234,6 +244,55 @@ class Header(Data):
 
 class StampedData(Data):
     header: Union[Header, Autofill]
+
+
+class DataQueue:
+    def __init__(self, data_type: Type[Data], size: int = 1, sticky: bool = False):
+        self.size = size
+        self.sticky = sticky
+        self.data_type = data_type
+        self.arrow_table: pa.Table = pa.Table.from_pylist(
+            [], schema=data_type.get_schema()
+        )
+
+    def _append_table(self, table: pa.Table) -> None:
+        if self.arrow_table.num_rows >= self.size:
+            table_to_merge = self.arrow_table.slice(1)
+        else:
+            table_to_merge = self.arrow_table
+
+        self.arrow_table = pa.concat_tables([table_to_merge, table])
+
+    def append(self, item: Data | pa.Table) -> None:
+        if isinstance(item, pa.Table):
+            self._append_table(item)
+        else:
+            assert isinstance(item, self.data_type), (
+                f"Item must be of type {self.data_type}, but got {type(item)}."
+            )
+            self._append_table(item.to_arrow_table())
+
+    def pop_table(self) -> pa.Table:
+        assert not self.is_empty(), "Queue is empty, cannot pop data."
+
+        table = self.arrow_table.take([0])
+
+        if self.sticky and self.arrow_table.num_rows == 1:
+            return table
+
+        # If the queue is not sticky, we remove the item from the queue
+        self.arrow_table = self.arrow_table.slice(1)
+
+        return table
+
+    def pop(self) -> Data:
+        return self.data_type.from_arrow(self.pop_table())
+
+    def is_empty(self) -> bool:
+        return self.arrow_table.num_rows == 0
+
+    def __len__(self) -> int:
+        return self.arrow_table.num_rows
 
 
 if __name__ == "__main__":
