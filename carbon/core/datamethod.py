@@ -27,7 +27,6 @@ class DataMethod:
             getattr(method, "_sink_configuration", {}),
         )
 
-        print(self.sinks[sink_index].schema for sink_index in self.sink_indices)
         self._input_queue: Dict[int, pa.Table] = {
             sink_index: pa.Table.from_pylist(
                 [], schema=self.sinks[sink_index].get_schema()
