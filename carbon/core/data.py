@@ -1,23 +1,11 @@
 import types
 from dataclasses import Field
-from typing import Any, Dict, List, Union, cast, get_args, get_origin
+from typing import Dict, List, Union, cast, get_args, get_origin
 
 import pyarrow as pa
 
 from carbon.core.data_utilities import Autofill, DataMeta
-
-
-def flatten_single_row_arrow_dict(data_dict: Dict[str, List[Any]]) -> Dict[str, Any]:
-    """
-    Flatten a single row of an Arrow-compatible dictionary.
-    """
-    flattened_dict = {}
-    for key, value in data_dict.items():
-        if isinstance(value, list) and len(value) == 1:
-            flattened_dict[key] = value[0]
-        else:
-            flattened_dict[key] = value
-    return flattened_dict
+from carbon.core.utilities import flatten_single_row_arrow_dict
 
 
 class Data(metaclass=DataMeta):
@@ -25,6 +13,19 @@ class Data(metaclass=DataMeta):
     Base class for data passed between modules in the Carbon framework.
     Subclass this and define fields using type annotations to create custom datatypes.
     """
+
+    @classmethod
+    def get_schema(cls) -> pa.Schema:
+        """
+        Generate the PyArrow schema for this data type based on the type annotations.
+        This method is called automatically by the DataMeta metaclass.
+        """
+        if not hasattr(cls, "_schema"):
+            raise ValueError(
+                "Data class must have a schema defined. "
+                "Ensure you are using the Data base class with type annotations."
+            )
+        return getattr(cls, "_schema")
 
     @property
     def schema(self) -> pa.Schema:
@@ -65,7 +66,7 @@ class Data(metaclass=DataMeta):
                 result[key] = value
         return result
 
-    def to_arrow_record_batch(self):
+    def to_arrow_record_batch(self) -> pa.RecordBatch:
         """
         Convert the data to a PyArrow RecordBatch.
         """
@@ -74,7 +75,7 @@ class Data(metaclass=DataMeta):
             [self._to_arrow_compatible_dict()], schema=self.schema
         )
 
-    def to_arrow_table(self):
+    def to_arrow_table(self) -> pa.Table:
         """
         Convert the data to a PyArrow Table.
         """
@@ -162,7 +163,7 @@ class Data(metaclass=DataMeta):
         """
         Create an instance of the Data class from a PyArrow RecordBatch or Table.
         """
-        if arrow_data.schema != getattr(cls, "_schema"):
+        if arrow_data.schema != cls.get_schema():
             raise ValueError(
                 "Arrow Table or RecordBatch schema does not match the Data class schema."
             )

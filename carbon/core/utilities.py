@@ -1,4 +1,4 @@
-from typing import Sequence
+from typing import Any, Dict, List, Sequence
 
 
 def is_equal_with_singleton(
@@ -16,3 +16,16 @@ def is_equal_with_singleton(
     b_norm = list(b) if is_sequence(b) else [b]  # type: ignore
 
     return a_norm == b_norm
+
+
+def flatten_single_row_arrow_dict(data_dict: Dict[str, List[Any]]) -> Dict[str, Any]:
+    """
+    Flatten a single row of an Arrow-compatible dictionary.
+    """
+    flattened_dict = {}
+    for key, value in data_dict.items():
+        if isinstance(value, list) and len(value) == 1:
+            flattened_dict[key] = value[0]
+        else:
+            flattened_dict[key] = value
+    return flattened_dict

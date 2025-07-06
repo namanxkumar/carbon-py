@@ -1,5 +1,7 @@
 from typing import Callable, Dict, List, Optional, Set, Tuple, Type, cast
 
+import pyarrow as pa
+
 from carbon.core.data import Data
 
 
@@ -25,9 +27,14 @@ class DataMethod:
             getattr(method, "_sink_configuration", {}),
         )
 
-        self._input_queue: Dict[int, List["Data"]] = {
-            sink_index: [] for sink_index in self.sink_indices
+        print(self.sinks[sink_index].schema for sink_index in self.sink_indices)
+        self._input_queue: Dict[int, pa.Table] = {
+            sink_index: pa.Table.from_pylist(
+                [], schema=self.sinks[sink_index].get_schema()
+            )
+            for sink_index in self.sink_indices
         }  # Queues for each sink type
+
         self._remaining_for_execution: Set[int] = set(
             self.sink_indices
         )  # Indices of sinks that are not ready for execution
@@ -104,16 +111,17 @@ class DataMethod:
 
         data = []
         for sink_index in self.sink_indices:
-            if (
+            data.append(
+                self.sinks[sink_index].from_arrow(
+                    self._input_queue[sink_index].take([0])
+                )
+            )
+            if not (
                 self._input_is_sticky[sink_index]
-                and len(self._input_queue[sink_index]) == 1
+                and self._input_queue[sink_index].num_rows == 1
             ):
-                # If the input is sticky and there's only one item, keep it
-                data.append(self._input_queue[sink_index][0])
-            else:
-                data.append(self._input_queue[sink_index].pop(0))
-
-                if len(self._input_queue[sink_index]) == 0:
+                self._input_queue[sink_index] = self._input_queue[sink_index].slice(1)
+                if self._input_queue[sink_index].num_rows == 0:
                     self._remaining_for_execution.add(sink_index)
         return data
 
@@ -128,13 +136,20 @@ class DataMethod:
             # If the dependency is a direct connection, add all data to the input queue
             for sink_index, item in zip(self.sink_indices, data):
                 if (
-                    len(self._input_queue[sink_index])
+                    self._input_queue[sink_index].num_rows
                     >= self._input_queue_size[sink_index]
                 ):
                     # If the queue is full, remove the oldest item
-                    self._input_queue[sink_index].pop(0)
+                    table_to_merge = self._input_queue[sink_index].slice(1)
+                else:
+                    table_to_merge = self._input_queue[sink_index]
 
-                self._input_queue[sink_index].append(item)
+                self._input_queue[sink_index] = pa.concat_tables(
+                    [
+                        table_to_merge,
+                        item.to_arrow_table(),
+                    ]
+                )
 
                 self._remaining_for_execution.discard(sink_index)
         else:
@@ -143,14 +158,21 @@ class DataMethod:
             )
 
             if (
-                len(self._input_queue[merge_sink_index])
+                self._input_queue[merge_sink_index].num_rows
                 >= self._input_queue_size[merge_sink_index]
             ):
                 # If the queue is full, remove the oldest item
-                self._input_queue[merge_sink_index].pop(0)
+                table_to_merge = self._input_queue[merge_sink_index].slice(1)
+            else:
+                table_to_merge = self._input_queue[merge_sink_index]
 
-            self._input_queue[merge_sink_index].append(
-                data[0] if isinstance(data, tuple) else data
+            self._input_queue[merge_sink_index] = pa.concat_tables(
+                [
+                    table_to_merge,
+                    data[0].to_arrow_table()
+                    if isinstance(data, tuple)
+                    else data.to_arrow_table(),
+                ]
             )
 
             self._remaining_for_execution.discard(merge_sink_index)
