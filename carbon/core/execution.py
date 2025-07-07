@@ -27,6 +27,7 @@ class ExecutionGraph:
             process_index: False for process_index in self.processes.keys()
         }  # Track if a process exited manually
         self.threads: Dict[int, Thread] = {}
+        self.reactive_threads = True  # Flag to indicate if reactive threads are enabled
         self.stop_event = Event()  # Event to signal threads to stop
 
     def _build_layers(self, methods: Set["DataMethod"]):
@@ -140,19 +141,22 @@ class ExecutionGraph:
 
             for layer_index, layer in enumerate(process_layers):
                 remaining_methods = list(layer)
-                if layer_index == 0:
-                    # If this is the first layer and no methods are ready, exit the thread
-                    if not any(
-                        method.is_ready_for_execution for method in remaining_methods
-                    ):
-                        self.process_exited_manually[process_index] = False
-                        return
+                remaining_method_index = 0
+
                 while remaining_methods and not self.stop_event.is_set():
                     method = remaining_methods.pop(0)
 
                     if not method.is_ready_for_execution:
                         # If there are no data to process, skip this method and add it back to the remaining methods
                         remaining_methods.append(method)
+                        remaining_method_index += 1
+                        if (
+                            remaining_method_index >= len(remaining_methods)
+                            and layer_index == 0
+                            and self.reactive_threads
+                        ):
+                            self.process_exited_manually[process_index] = False
+                            return
                         continue
 
                     # If there are data to process, execute the method
@@ -218,16 +222,21 @@ class ExecutionGraph:
                 self.threads[process] = Thread(
                     target=self._execute_process_group, args=(process,)
                 )
-                if self.process_readiness[process]:
-                    # If the process is ready, start the thread immediately
+                if self.process_readiness[process] or not self.reactive_threads:
+                    # If the process is ready or reactive threads is off, start the thread immediately
                     self.threads[process].start()
 
             # Start monitoring the processes
-            monitor_thread = Thread(target=self._monitor_processes)
-            monitor_thread.start()
-
-            # Wait for all processes to finish
-            monitor_thread.join()
+            if self.reactive_threads:
+                # If reactive threads are enabled, start a monitoring thread
+                monitor_thread = Thread(target=self._monitor_processes)
+                monitor_thread.start()
+                # Wait for all processes to finish
+                monitor_thread.join()
+            else:
+                # If reactive threads are disabled, wait for all threads to finish
+                for thread in self.threads.values():
+                    thread.join()
         except KeyboardInterrupt:
             print("\nReceived Ctrl+C, attempting graceful shutdown...")
             self.stop_event.set()
