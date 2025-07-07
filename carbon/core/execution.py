@@ -23,6 +23,9 @@ class ExecutionGraph:
             )
             for process_index in self.processes.keys()
         }
+        self.process_exited_manually = {
+            process_index: False for process_index in self.processes.keys()
+        }  # Track if a process exited manually
         self.threads: Dict[int, Thread] = {}
         self.stop_event = Event()  # Event to signal threads to stop
 
@@ -128,6 +131,7 @@ class ExecutionGraph:
     def _execute_process_group(self, process_index: int):
         """Execute the methods in the given process group."""
         process_layers = self.process_layer_mapping[process_index]
+        self.process_exited_manually[process_index] = True
 
         while not self.stop_event.is_set():
             # Check if there are any methods to execute in the current layer
@@ -141,6 +145,7 @@ class ExecutionGraph:
                     if not any(
                         method.is_ready_for_execution for method in remaining_methods
                     ):
+                        self.process_exited_manually[process_index] = False
                         return
                 while remaining_methods and not self.stop_event.is_set():
                     method = remaining_methods.pop(0)
@@ -193,7 +198,10 @@ class ExecutionGraph:
                 break
 
             for process_index in ready_processes:
-                if self.threads[process_index].is_alive():
+                if (
+                    self.threads[process_index].is_alive()
+                    or self.process_exited_manually[process_index]
+                ):
                     # If the thread is still alive, skip to the next process
                     continue
                 self.threads[process_index] = Thread(
