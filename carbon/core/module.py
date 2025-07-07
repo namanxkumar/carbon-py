@@ -1,5 +1,4 @@
 from typing import (
-    TYPE_CHECKING,
     Callable,
     Dict,
     List,
@@ -13,9 +12,7 @@ from typing import (
 
 from carbon.core.connection import Connection
 from carbon.core.datamethod import DataMethod, SinkConfiguration
-
-if TYPE_CHECKING:
-    from carbon.data import Data
+from carbon.data import Data
 
 
 class ConfigurableSink:

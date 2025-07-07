@@ -1,9 +1,8 @@
 from threading import Event, Thread
-from typing import TYPE_CHECKING, Dict, List, Set
+from typing import Dict, List, Set
 
-if TYPE_CHECKING:
-    from carbon.core.datamethod import DataMethod
-    from carbon.core.module import Module
+from carbon.core.datamethod import DataMethod
+from carbon.core.module import Module
 
 
 class ExecutionGraph:

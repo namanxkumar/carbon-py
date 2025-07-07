@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 from typing import (
-    TYPE_CHECKING,
     Callable,
     Dict,
     List,
@@ -12,11 +11,8 @@ from typing import (
     cast,
 )
 
-if TYPE_CHECKING:
-    from carbon.data import Data
-
 from carbon.core.utilities import ensure_tuple_format
-from carbon.data import DataQueue, QueueItem
+from carbon.data import Data, DataQueue, QueueItem
 
 
 @dataclass

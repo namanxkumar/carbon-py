@@ -1,11 +1,9 @@
 from enum import Enum
-from typing import TYPE_CHECKING, Dict, Protocol, Sequence, Tuple, Type, Union
+from typing import Dict, Protocol, Sequence, Tuple, Type, Union
 
+from carbon.core.datamethod import DataMethod
 from carbon.core.utilities import ensure_tuple_format
-
-if TYPE_CHECKING:
-    from carbon.core.datamethod import DataMethod
-    from carbon.data import Data
+from carbon.data import Data
 
 
 class ConnectionType(Enum):
