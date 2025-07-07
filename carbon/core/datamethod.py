@@ -10,15 +10,12 @@ from typing import (
     Type,
     Union,
     cast,
-    overload,
 )
 
 if TYPE_CHECKING:
-    import pyarrow as pa
-
     from carbon.core.data import Data
 
-from carbon.core.data import DataQueue, convert_data_to_arrow
+from carbon.core.data import DataQueue, QueueItem
 from carbon.core.utilities import ensure_tuple_format
 
 
@@ -151,30 +148,18 @@ class DataMethod:
                 self._remaining_for_execution.add(sink_index)
         return data
 
-    @overload
     def receive_data(
-        self, dependency: "DataMethod", data: Union["Data", Tuple["Data", ...]]
+        self,
+        dependency: "DataMethod",
+        data: Union["QueueItem", Tuple["QueueItem", ...]],
     ) -> None:
-        """Receive Data from a dependency and add it to the input queue."""
-        ...
-
-    @overload
-    def receive_data(
-        self, dependency: "DataMethod", data: Union["pa.Table", Tuple["pa.Table", ...]]
-    ) -> None:
-        """Receive Arrow Table from a dependency and add it to the input queue (Zero Copy)."""
-        ...
-
-    def receive_data(self, dependency, data):
         merge_sink_index = self.dependency_to_configuration[dependency].merge_sink_index
         if merge_sink_index is None:
             assert isinstance(data, tuple), "Expected data to be a tuple"
 
             # If the dependency is a direct connection, add all data to the input queue
             for sink_index, item in zip(self.sink_indices, data):
-                self._input_queue[sink_index].append(
-                    item
-                )  # No memory allocation (ZERO COPY)
+                self._input_queue[sink_index].append(item)
                 self._remaining_for_execution.discard(sink_index)
         else:
             assert not isinstance(data, (list, tuple)) or len(data) == 1, (
@@ -186,10 +171,14 @@ class DataMethod:
             )
             self._remaining_for_execution.discard(merge_sink_index)
 
-    def execute(self) -> Optional[Tuple["pa.Table", ...]]:
+    def execute(self) -> Optional[Tuple[QueueItem, ...]]:
         """Execute the method and return the output."""
         output = self.__call__(*self.pop_data_for_execution())
-        return convert_data_to_arrow(output) if output is not None else None
+        return (
+            tuple(item.export_to_queue_format() for item in output)
+            if output is not None
+            else None
+        )
 
     def __call__(self, *args, **kwargs) -> Optional[Tuple["Data", ...]]:
         output = self.method(*args, **kwargs)

@@ -1,11 +1,13 @@
 import types
 from dataclasses import Field
-from typing import Dict, List, Tuple, Type, Union, cast, get_args, get_origin
+from typing import Dict, List, Type, Union, cast, get_args, get_origin
 
 import pyarrow as pa
 
 from carbon.core.data_utilities import Autofill, DataMeta
 from carbon.core.utilities import flatten_single_row_arrow_dict
+
+QueueItem = Union["Data", "pa.Table"]
 
 
 class Data(metaclass=DataMeta):
@@ -225,25 +227,12 @@ class Data(metaclass=DataMeta):
 
             self.__dict__[field_name] = self._get_autofill_fields(field_type=field_type)
 
-
-def convert_data_to_arrow(
-    data: Union["Data", Tuple["Data", ...]],
-) -> Union["pa.Table", Tuple["pa.Table", ...]]:
-    """Convert Data or tuple of Data to Arrow Table or tuple of Arrow Tables."""
-    if isinstance(data, Data):
-        return data.to_arrow_table()
-    elif isinstance(data, tuple):
-        return tuple(item.to_arrow_table() for item in data)
-
-
-class Header(Data):
-    seq: int
-    stamp: float
-    frame_id: str
-
-
-class StampedData(Data):
-    header: Union[Header, Autofill]
+    def export_to_queue_format(self) -> QueueItem:
+        """
+        Export the data to a format suitable for DataQueue.
+        This method is used to convert the data to a PyArrow Table.
+        """
+        return self.to_arrow_table()
 
 
 class DataQueue:
@@ -261,7 +250,7 @@ class DataQueue:
 
         self.arrow_table = pa.concat_tables([table_to_merge, table])
 
-    def append(self, item: Union["Data", "pa.Table"]) -> None:
+    def append(self, item: QueueItem) -> None:
         if isinstance(item, pa.Table):
             self._append_table(item)
         else:
@@ -270,7 +259,7 @@ class DataQueue:
             )
             self._append_table(item.to_arrow_table())
 
-    def pop_table(self) -> "pa.Table":
+    def _pop_table(self) -> "pa.Table":
         assert not self.is_empty(), "Queue is empty, cannot pop data."
 
         table = self.arrow_table.take([0])
@@ -284,7 +273,7 @@ class DataQueue:
         return table
 
     def pop(self) -> Data:
-        return self.data_type.from_arrow(self.pop_table())
+        return self.data_type.from_arrow(self._pop_table())
 
     def is_empty(self) -> bool:
         return self.arrow_table.num_rows == 0
@@ -293,13 +282,14 @@ class DataQueue:
         return self.arrow_table.num_rows
 
 
-class DataCollection(tuple):
-    """
-    A collection of Data objects that can be converted to a PyArrow Table.
-    This is useful for passing multiple Data objects together.
-    """
+class Header(Data):
+    seq: int
+    stamp: float
+    frame_id: str
 
-    pass
+
+class StampedData(Data):
+    header: Union[Header, Autofill]
 
 
 if __name__ == "__main__":

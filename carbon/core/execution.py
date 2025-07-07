@@ -3,12 +3,12 @@ from typing import TYPE_CHECKING, Dict, List, Set
 
 if TYPE_CHECKING:
     from carbon.core.datamethod import DataMethod
-    from carbon.core.module import ModuleReference
+    from carbon.core.module import Module
 
 
 class ExecutionGraph:
-    def __init__(self, root_module: "ModuleReference"):
-        methods = root_module.module.get_methods()
+    def __init__(self, root_module: "Module"):
+        methods = root_module.get_methods()
 
         self.processes, self.process_mapping = self._build_processes(methods)
         self.layers, self.layer_mapping, self.process_layer_mapping = (
