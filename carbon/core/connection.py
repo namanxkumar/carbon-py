@@ -1,6 +1,8 @@
 from enum import Enum
 from typing import TYPE_CHECKING, Sequence, Tuple, Type
 
+from carbon.core.utilities import ensure_tuple_format
+
 if TYPE_CHECKING:
     from carbon.core.data import Data
     from carbon.core.datamethod import DataMethod
@@ -29,11 +31,9 @@ class Connection:
             "Use a single source or sink, or create a connection for each pair."
         )
 
-        self.source = tuple(source) if isinstance(source, Sequence) else (source,)
-        self.sink = tuple(sink) if isinstance(sink, Sequence) else (sink,)
-        self.data: Tuple[Type["Data"], ...] | Tuple[Type["Data"]] = (
-            tuple(data) if isinstance(data, Sequence) else (data,)
-        )
+        self.source = ensure_tuple_format(source)
+        self.sink = ensure_tuple_format(sink)
+        self.data = ensure_tuple_format(data)
         self.blocking = blocking
         self.type: ConnectionType = ConnectionType.DIRECT  # Default type
         self.source_methods: Tuple["DataMethod", ...]
@@ -50,11 +50,14 @@ class Connection:
 
         if len(self.source) > 1:
             for src, dat in zip(self.source, self.data):
-                assert (dat,) in src._sources, (
+                assert ensure_tuple_format(dat) in src._sources, (
                     f"Source {src} must have data type {dat} defined in its sources."
                 )
             self.source_methods = tuple(
-                [src._sources[(dat,)] for src, dat in zip(self.source, self.data)]
+                [
+                    src._sources[ensure_tuple_format(dat)]
+                    for src, dat in zip(self.source, self.data)
+                ]
             )
             self.type = ConnectionType.MERGE
         elif len(self.source) == 1:
@@ -65,11 +68,14 @@ class Connection:
 
         if len(self.sink) > 1:
             for snk, dat in zip(self.sink, self.data):
-                assert (dat,) in snk._sinks, (
+                assert ensure_tuple_format(dat) in snk._sinks, (
                     f"Sink {snk} must have data type {dat} defined in its sinks."
                 )
             self.sink_methods = tuple(
-                [snk._sinks[(dat,)] for snk, dat in zip(self.sink, self.data)]
+                [
+                    snk._sinks[ensure_tuple_format(dat)]
+                    for snk, dat in zip(self.sink, self.data)
+                ]
             )
             self.type = ConnectionType.SPLIT
         elif len(self.sink) == 1:

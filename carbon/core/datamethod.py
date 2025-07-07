@@ -17,7 +17,32 @@ if TYPE_CHECKING:
 
     from carbon.core.data import Data
 
+from typing import NamedTuple
+
 from carbon.core.data import DataQueue
+from carbon.core.utilities import ensure_tuple_format
+
+
+class DependencyConfiguration(NamedTuple):
+    """
+    Configuration for a dependency.
+    - merge_sink_index: Index of the sink to merge data into (None if all sinks are received).
+    - blocking: Whether the dependency is blocking or not.
+    """
+
+    merge_sink_index: Optional[int]
+    blocking: bool
+
+
+class DependentConfiguration(NamedTuple):
+    """
+    Configuration for a dependent.
+    - split_source_index: Index of the source to split data from (None if all sources are sent).
+    - blocking: Whether the dependent is blocking or not.
+    """
+
+    split_source_index: Optional[int]
+    blocking: bool
 
 
 class DataMethod:
@@ -61,19 +86,13 @@ class DataMethod:
             self.sink_indices
         )  # Indices of sinks that are not ready for execution
 
-        self.dependencies_to_merges: Dict[
-            "DataMethod", Optional[int]
-        ] = {}  # Sink index for each dependency (None if all sinks are received from the dependency (direct connection), int indicating sink index of the data if only a part of the sinks is received)
-        self.dependencies_to_blocking: Dict[
-            "DataMethod", bool
-        ] = {}  # Whether the dependency is blocking or not
+        self.dependency_to_configuration: Dict[
+            "DataMethod", DependencyConfiguration
+        ] = {}  # Dependencies of this method
 
-        self.dependents_to_splits: Dict[
-            "DataMethod", Optional[int]
-        ] = {}  # Source index for each dependent (None if all sources are sent to the dependent (direct connection), int indicating source index of the data if only a part of the sources is sent)
-        self.dependents_to_blocking: Dict[
-            "DataMethod", bool
-        ] = {}  # Whether the dependent is blocking or not
+        self.dependent_to_configuration: Dict[
+            "DataMethod", DependentConfiguration
+        ] = {}  # Dependents of this method
 
         # TODO: Add a message cache and a message cache size for logging and transforms (historical transforms)
 
@@ -84,8 +103,10 @@ class DataMethod:
         blocking: bool,
     ) -> None:
         """Add a dependency to the method."""
-        self.dependencies_to_merges[dependency] = merge_sink_index
-        self.dependencies_to_blocking[dependency] = blocking
+        self.dependency_to_configuration[dependency] = DependencyConfiguration(
+            merge_sink_index=merge_sink_index,
+            blocking=blocking,
+        )
 
     def add_dependent(
         self,
@@ -94,18 +115,20 @@ class DataMethod:
         blocking: bool,
     ) -> None:
         """Add a dependent to the method."""
-        self.dependents_to_splits[dependent] = split_source_index
-        self.dependents_to_blocking[dependent] = blocking
+        self.dependent_to_configuration[dependent] = DependentConfiguration(
+            split_source_index=split_source_index,
+            blocking=blocking,
+        )
 
     @property
     def dependencies(self) -> Set["DataMethod"]:
         """Get the dependencies of the method."""
-        return set(self.dependencies_to_merges.keys())
+        return set(self.dependency_to_configuration.keys())
 
     @property
     def dependents(self) -> Set["DataMethod"]:
         """Get the dependents of the method."""
-        return set(self.dependents_to_splits.keys())
+        return set(self.dependent_to_configuration.keys())
 
     @property
     def is_ready_for_execution(self) -> bool:
@@ -141,7 +164,7 @@ class DataMethod:
         ...
 
     def receive_data(self, dependency, data):
-        merge_sink_index = self.dependencies_to_merges[dependency]
+        merge_sink_index = self.dependency_to_configuration[dependency].merge_sink_index
         if merge_sink_index is None:
             assert isinstance(data, tuple), "Expected data to be a tuple"
 
@@ -171,11 +194,7 @@ class DataMethod:
         if output is None:
             return output
 
-        # Ensure the output is same as the expected source type
-        if not isinstance(output, (tuple, list)):
-            output = (output,)
-        elif isinstance(output, list):
-            output = tuple(output)
+        output = ensure_tuple_format(output)
 
         assert len(output) == len(self.sources), (
             f"Method {self.name} must return {len(self.sources)} items, but got {len(output)}."

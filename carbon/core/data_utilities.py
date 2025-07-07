@@ -29,6 +29,7 @@ class DataMeta(type):
         if not bases:
             return super().__new__(cls, name, bases, attrs)
 
+        # --- Arrow Schema Generation ---
         base_schema = getattr(bases[0], "_schema", None)
         new_schema = generate_arrow_schema(attrs.get("__annotations__", {}))
 
@@ -65,17 +66,17 @@ class DataMeta(type):
             attrs,
         )
 
-        # Check if the class is a dataclass
-        if not attrs.get("__dataclass_fields__", None):
-            # If not a dataclass, convert to a dataclass
-            return dataclass(
+        # --- Handle Data Class Conversion ---
+        return (
+            dataclass(
                 cast(
                     type,
                     new_cls,
                 )
             )
-        else:
-            return new_cls
+            if not hasattr(new_cls, "__dataclass_fields__")
+            else new_cls
+        )
 
     def __repr__(cls):
         return f"{cls.__name__}({', '.join(f'{k}: {v.__name__}' for k, v in cls.__annotations__.items())})"

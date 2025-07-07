@@ -88,8 +88,8 @@ class ExecutionGraph:
         group_mapping = {method: index for index, method in enumerate(methods)}
 
         for method in methods:
-            for dependency, blocking in method.dependencies_to_blocking.items():
-                if blocking:
+            for dependency, configuration in method.dependency_to_configuration.items():
+                if configuration.blocking:
                     node_group = group_mapping[method]
                     dependency_group = group_mapping[dependency]
                     # Check if the dependency is in a different group
@@ -138,16 +138,16 @@ class ExecutionGraph:
                     # Add the output to the input queue of the dependent methods
                     for (
                         dependent_method,
-                        split_source_index,
-                    ) in method.dependents_to_splits.items():
+                        configuration,
+                    ) in method.dependent_to_configuration.items():
                         assert method_output is not None, (
                             f"Method {method.name} returned None, but it should return a valid output for its dependents."
                         )
                         dependent_method.receive_data(
                             method,
                             method_output
-                            if split_source_index is None
-                            else method_output[split_source_index],
+                            if configuration.split_source_index is None
+                            else method_output[configuration.split_source_index],
                         )
 
     def execute(self, graceful_timeout: float = 5.0):

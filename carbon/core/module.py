@@ -218,8 +218,6 @@ class Module:
         source: "Module" | Sequence["Module"],
         sink: "Module" | Sequence["Module"],
         data: Type["Data"] | Sequence[Type["Data"]],
-        sticky_queue: bool = False,
-        queue_size: int = 1,
         sync: bool = False,
     ):
         """
@@ -248,7 +246,7 @@ class Module:
         self,
         source: "Module" | Sequence["Module"] | None,
         sink: "Module" | Sequence["Module"] | None,
-        data: "Data" | Sequence["Data"],
+        data: Type["Data"] | Sequence[Type["Data"]],
     ):
         """
         Block a connection between source and sink modules for the specified data type.

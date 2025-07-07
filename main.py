@@ -135,8 +135,8 @@ for connection in robot.get_connections():
 print("\nMethods:")
 for method in robot.get_methods():
     print(method.name)
-    print("  Depends on:", method.dependents_to_splits.keys())
-    print("  Produces for:", method.dependencies_to_merges.keys())
+    print("  Depends on:", method.dependents)
+    print("  Produces for:", method.dependencies)
 print()
 execution_graph.execute()
 print("\nExecution completed.")

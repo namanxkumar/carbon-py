@@ -1,21 +1,34 @@
-from typing import Any, Dict, List, Sequence
+from typing import Any, Dict, List, Sequence, Tuple, TypeVar
+
+# def is_equal_with_singleton(
+#     a: object | Sequence[object], b: object | Sequence[object]
+# ) -> bool:
+#     """
+#     Check equality between two objects or sequences.
+#     Normalizes to lists to handle tuple/list comparison.
+#     """
+
+#     def is_sequence(obj):
+#         return isinstance(obj, (list, tuple))
+
+#     a_norm = list(a) if is_sequence(a) else [a]  # type: ignore
+#     b_norm = list(b) if is_sequence(b) else [b]  # type: ignore
+
+#     return a_norm == b_norm
 
 
-def is_equal_with_singleton(
-    a: object | Sequence[object], b: object | Sequence[object]
-) -> bool:
+T = TypeVar("T")
+
+
+def ensure_tuple_format(data: T | Sequence[T]) -> Tuple[T] | Tuple[T, ...]:
     """
-    Check equality between two objects or sequences.
-    Normalizes to lists to handle tuple/list comparison.
+    Normalize a single object or a sequence to a tuple.
+    If the input is a single object, it returns a tuple with that object.
+    If the input is already a sequence, it returns it as a tuple.
     """
-
-    def is_sequence(obj):
-        return isinstance(obj, (list, tuple))
-
-    a_norm = list(a) if is_sequence(a) else [a]  # type: ignore
-    b_norm = list(b) if is_sequence(b) else [b]  # type: ignore
-
-    return a_norm == b_norm
+    if isinstance(data, Sequence):
+        return tuple(data)
+    return (data,)
 
 
 def flatten_single_row_arrow_dict(data_dict: Dict[str, List[Any]]) -> Dict[str, Any]:

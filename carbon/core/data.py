@@ -227,8 +227,8 @@ class Data(metaclass=DataMeta):
 
 
 def convert_data_to_arrow(
-    data: Union[Data, Tuple[Data, ...]],
-) -> Union[pa.Table, Tuple[pa.Table, ...]]:
+    data: Union["Data", Tuple["Data", ...]],
+) -> Union["pa.Table", Tuple["pa.Table", ...]]:
     """Convert Data or tuple of Data to Arrow Table or tuple of Arrow Tables."""
     if isinstance(data, Data):
         return data.to_arrow_table()
@@ -247,7 +247,7 @@ class StampedData(Data):
 
 
 class DataQueue:
-    def __init__(self, data_type: Type[Data], size: int = 1, sticky: bool = False):
+    def __init__(self, data_type: Type["Data"], size: int = 1, sticky: bool = False):
         self.size = size
         self.sticky = sticky
         self.data_type = data_type
@@ -293,6 +293,15 @@ class DataQueue:
 
     def __len__(self) -> int:
         return self.arrow_table.num_rows
+
+
+class DataCollection(tuple):
+    """
+    A collection of Data objects that can be converted to a PyArrow Table.
+    This is useful for passing multiple Data objects together.
+    """
+
+    pass
 
 
 if __name__ == "__main__":
