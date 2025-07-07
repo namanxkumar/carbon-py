@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import TYPE_CHECKING, Sequence, Tuple, Type
+from typing import TYPE_CHECKING, Sequence, Tuple, Type, Union
 
 from carbon.core.utilities import ensure_tuple_format
 
@@ -18,9 +18,9 @@ class ConnectionType(Enum):
 class Connection:
     def __init__(
         self,
-        source: "Module" | Sequence["Module"],
-        sink: "Module" | Sequence["Module"],
-        data: Type["Data"] | Sequence[Type["Data"]],
+        source: Union["Module", Sequence["Module"]],
+        sink: Union["Module", Sequence["Module"]],
+        data: Union[Type["Data"], Sequence[Type["Data"]]],
         blocking: bool = False,
     ):
         assert not (
@@ -122,9 +122,9 @@ class Connection:
 class AsyncConnection(Connection):
     def __init__(
         self,
-        source: "Module" | Sequence["Module"],
-        sink: "Module" | Sequence["Module"],
-        data: Type["Data"] | Sequence[Type["Data"]],
+        source: Union["Module", Sequence["Module"]],
+        sink: Union["Module", Sequence["Module"]],
+        data: Union[Type["Data"], Sequence[Type["Data"]]],
     ):
         super().__init__(
             source=source,
@@ -142,9 +142,9 @@ class AsyncConnection(Connection):
 class SyncConnection(Connection):
     def __init__(
         self,
-        source: "Module" | Sequence["Module"],
-        sink: "Module" | Sequence["Module"],
-        data: Type["Data"] | Sequence[Type["Data"]],
+        source: Union["Module", Sequence["Module"]],
+        sink: Union["Module", Sequence["Module"]],
+        data: Union[Type["Data"], Sequence[Type["Data"]]],
     ):
         super().__init__(
             source=source,

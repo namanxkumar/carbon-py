@@ -3,7 +3,7 @@ import termios
 import tty
 from typing import Tuple
 
-from carbon import ConfigurableType, Data, Module, ModuleReference, sink, source
+from carbon import ConfigurableSink, Data, Module, ModuleReference, sink, source
 from carbon.core.execution import ExecutionGraph
 
 
@@ -34,7 +34,7 @@ class DifferentialDriveController(Module):
                 sync=True,
             )
 
-    @sink(ConfigurableType(TeleopCommand, sticky=True))
+    @sink(ConfigurableSink(TeleopCommand, sticky=True))
     @source(JointState, JointState)
     def create_motor_commands(
         self, command: TeleopCommand

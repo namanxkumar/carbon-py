@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
     Callable,
@@ -17,13 +18,12 @@ if TYPE_CHECKING:
 
     from carbon.core.data import Data
 
-from typing import NamedTuple
-
-from carbon.core.data import DataQueue
+from carbon.core.data import DataQueue, convert_data_to_arrow
 from carbon.core.utilities import ensure_tuple_format
 
 
-class DependencyConfiguration(NamedTuple):
+@dataclass
+class DependencyConfiguration:
     """
     Configuration for a dependency.
     - merge_sink_index: Index of the sink to merge data into (None if all sinks are received).
@@ -34,7 +34,8 @@ class DependencyConfiguration(NamedTuple):
     blocking: bool
 
 
-class DependentConfiguration(NamedTuple):
+@dataclass
+class DependentConfiguration:
     """
     Configuration for a dependent.
     - split_source_index: Index of the source to split data from (None if all sources are sent).
@@ -45,39 +46,49 @@ class DependentConfiguration(NamedTuple):
     blocking: bool
 
 
+@dataclass
+class SinkConfiguration:
+    """
+    Configuration for a sink.
+    - queue_size: Size of the queue for the sink.
+    - sticky: Whether the sink is sticky or not.
+    """
+
+    queue_size: int = 1
+    sticky: bool = False
+
+
 class DataMethod:
     def __init__(self, method: Callable):
         self.method = method
         self.name: str = method.__name__
 
-        self.sources = cast(
-            Tuple[Type["Data"], ...], getattr(method, "_sources", tuple())
+        assert hasattr(method, "_sources"), (
+            f"Method {self.name} must have a _sources attribute defined."
         )
+        assert hasattr(method, "_sinks"), (
+            f"Method {self.name} must have a _sinks attribute defined."
+        )
+        assert hasattr(method, "_sink_configuration"), (
+            f"Method {self.name} must have a _sink_configuration attribute defined."
+        )
+
+        self.sources = cast(Tuple[Type["Data"], ...], getattr(method, "_sources"))
         self.source_indices: Tuple[int, ...] = tuple(range(len(self.sources)))
 
-        self.sinks = cast(Tuple[Type["Data"], ...], getattr(method, "_sinks", tuple()))
+        self.sinks = cast(Tuple[Type["Data"], ...], getattr(method, "_sinks"))
         self.sink_indices: Tuple[int, ...] = tuple(range(len(self.sinks)))
 
-        self.source_configuration = cast(
-            Dict[int, Dict[str, int | bool]],
-            getattr(method, "_source_configuration", {}),
-        )
-        self.sink_configuration = cast(
-            Dict[int, Dict[str, int | bool]],
-            getattr(method, "_sink_configuration", {}),
+        sink_configuration = cast(
+            Dict[int, SinkConfiguration],
+            getattr(method, "_sink_configuration"),
         )
 
         self._input_queue: Dict[int, DataQueue] = {
             sink_index: DataQueue(
                 self.sinks[sink_index],
-                size=cast(
-                    int,
-                    self.sink_configuration.get(sink_index, {}).get("queue_size", 1),
-                ),
-                sticky=cast(
-                    bool,
-                    self.sink_configuration.get(sink_index, {}).get("sticky", False),
-                ),
+                size=sink_configuration[sink_index].queue_size,
+                sticky=sink_configuration[sink_index].sticky,
             )
             for sink_index in self.sink_indices
         }
@@ -158,7 +169,7 @@ class DataMethod:
 
     @overload
     def receive_data(
-        self, dependency: "DataMethod", data: "pa.Table" | Tuple["pa.Table", ...]
+        self, dependency: "DataMethod", data: Union["pa.Table", Tuple["pa.Table", ...]]
     ) -> None:
         """Receive Arrow Table from a dependency and add it to the input queue (Zero Copy)."""
         ...
@@ -184,9 +195,10 @@ class DataMethod:
             )
             self._remaining_for_execution.discard(merge_sink_index)
 
-    def execute(self) -> Optional[Tuple["Data", ...]]:
+    def execute(self) -> Optional[Tuple["pa.Table", ...]]:
         """Execute the method and return the output."""
-        return self.__call__(*self.pop_data_for_execution())
+        output = self.__call__(*self.pop_data_for_execution())
+        return convert_data_to_arrow(output) if output is not None else None
 
     def __call__(self, *args, **kwargs) -> Optional[Tuple["Data", ...]]:
         output = self.method(*args, **kwargs)

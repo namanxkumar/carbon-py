@@ -8,68 +8,39 @@ from typing import (
     Set,
     Tuple,
     Type,
+    Union,
 )
 
 from carbon.core.connection import AsyncConnection, Connection, SyncConnection
-from carbon.core.datamethod import DataMethod
+from carbon.core.datamethod import DataMethod, SinkConfiguration
 
 if TYPE_CHECKING:
     from .data import Data
 
 
-# Define new class for allowing source and sink decorators to add data types with configuration options
-# to methods in the module.
-
-
-class ConfigurableType:
-    def __init__(
-        self, type_: Type["Data"], queue_size: int = 1, sticky: bool = False, **kwargs
-    ):
+class ConfigurableSink:
+    def __init__(self, type_: Type["Data"], queue_size: int = 1, sticky: bool = False):
         self.type = type_
-        self.queue_size = queue_size
-        self.sticky = sticky
-        self.config = kwargs
-
-    def __repr__(self):
-        return f"{self.type.__name__}({self.config})"
+        self.configuration = SinkConfiguration(queue_size=queue_size, sticky=sticky)
 
 
-def source(*sources: Type["Data"] | ConfigurableType):
+def source(*sources: Type["Data"]):
     def decorator(
-        func: Callable[..., "Data" | Tuple["Data", ...]],
+        func: Callable[..., Union["Data", Tuple["Data", ...], None]],
     ):
-        setattr(
-            func,
-            "_sources",
-            tuple(
-                source.type if isinstance(source, ConfigurableType) else source
-                for source in sources
-            ),
-        )
-        setattr(
-            func,
-            "_source_configuration",
-            {
-                source_index: {
-                    "queue_size": source.queue_size,
-                    "sticky": source.sticky,
-                }
-                for source_index, source in enumerate(sources)
-                if isinstance(source, ConfigurableType)
-            },
-        )
+        setattr(func, "_sources", sources)
         return func
 
     return decorator
 
 
-def sink(*sinks: Type["Data"] | ConfigurableType):
-    def decorator(func: Callable[..., "Data" | Tuple["Data", ...] | None]):
+def sink(*sinks: Union[Type["Data"], ConfigurableSink]):
+    def decorator(func: Callable[..., Union["Data", Tuple["Data", ...], None]]):
         setattr(
             func,
             "_sinks",
             tuple(
-                sink.type if isinstance(sink, ConfigurableType) else sink
+                sink.type if isinstance(sink, ConfigurableSink) else sink
                 for sink in sinks
             ),
         )
@@ -77,12 +48,10 @@ def sink(*sinks: Type["Data"] | ConfigurableType):
             func,
             "_sink_configuration",
             {
-                sink_index: {
-                    "queue_size": sink.queue_size,
-                    "sticky": sink.sticky,
-                }
+                sink_index: sink.configuration
+                if isinstance(sink, ConfigurableSink)
+                else SinkConfiguration()
                 for sink_index, sink in enumerate(sinks)
-                if isinstance(sink, ConfigurableType)
             },
         )
         return func
@@ -215,9 +184,9 @@ class Module:
 
     def create_connection(
         self,
-        source: "Module" | Sequence["Module"],
-        sink: "Module" | Sequence["Module"],
-        data: Type["Data"] | Sequence[Type["Data"]],
+        source: Union["Module", Sequence["Module"]],
+        sink: Union["Module", Sequence["Module"]],
+        data: Union[Type["Data"], Sequence[Type["Data"]]],
         sync: bool = False,
     ):
         """
@@ -234,7 +203,7 @@ class Module:
 
     def add_connection(
         self,
-        connection: AsyncConnection | SyncConnection,
+        connection: Union[AsyncConnection, SyncConnection],
     ):
         """
         Add an existing connection to the module.
@@ -244,9 +213,9 @@ class Module:
 
     def block_connection(
         self,
-        source: "Module" | Sequence["Module"] | None,
-        sink: "Module" | Sequence["Module"] | None,
-        data: Type["Data"] | Sequence[Type["Data"]],
+        source: Union["Module", Sequence["Module"], None],
+        sink: Union["Module", Sequence["Module"], None],
+        data: Union[Type["Data"], Sequence[Type["Data"]]],
     ):
         """
         Block a connection between source and sink modules for the specified data type.

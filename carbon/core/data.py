@@ -251,9 +251,7 @@ class DataQueue:
         self.size = size
         self.sticky = sticky
         self.data_type = data_type
-        self.arrow_table: pa.Table = pa.Table.from_pylist(
-            [], schema=data_type.get_schema()
-        )
+        self.arrow_table = pa.Table.from_pylist([], schema=data_type.get_schema())
 
     def _append_table(self, table: pa.Table) -> None:
         if self.arrow_table.num_rows >= self.size:
@@ -263,7 +261,7 @@ class DataQueue:
 
         self.arrow_table = pa.concat_tables([table_to_merge, table])
 
-    def append(self, item: Data | pa.Table) -> None:
+    def append(self, item: Union["Data", "pa.Table"]) -> None:
         if isinstance(item, pa.Table):
             self._append_table(item)
         else:
@@ -272,7 +270,7 @@ class DataQueue:
             )
             self._append_table(item.to_arrow_table())
 
-    def pop_table(self) -> pa.Table:
+    def pop_table(self) -> "pa.Table":
         assert not self.is_empty(), "Queue is empty, cannot pop data."
 
         table = self.arrow_table.take([0])

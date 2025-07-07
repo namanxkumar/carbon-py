@@ -1,8 +1,6 @@
 from threading import Event, Thread
 from typing import TYPE_CHECKING, Dict, List, Set
 
-from carbon.core.data import convert_data_to_arrow
-
 if TYPE_CHECKING:
     from carbon.core.datamethod import DataMethod
     from carbon.core.module import ModuleReference
@@ -129,11 +127,6 @@ class ExecutionGraph:
 
                     # If there are data to process, execute the method
                     method_output = method.execute()
-                    method_output = (
-                        convert_data_to_arrow(method_output)
-                        if method_output is not None
-                        else None
-                    )
 
                     # Add the output to the input queue of the dependent methods
                     for (

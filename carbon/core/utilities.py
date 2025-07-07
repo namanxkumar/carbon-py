@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Sequence, Tuple, TypeVar
+from typing import Any, Dict, List, Sequence, Tuple, TypeVar, Union
 
 # def is_equal_with_singleton(
 #     a: object | Sequence[object], b: object | Sequence[object]
@@ -20,7 +20,7 @@ from typing import Any, Dict, List, Sequence, Tuple, TypeVar
 T = TypeVar("T")
 
 
-def ensure_tuple_format(data: T | Sequence[T]) -> Tuple[T] | Tuple[T, ...]:
+def ensure_tuple_format(data: Union[T, Sequence[T]]) -> Union[Tuple[T], Tuple[T, ...]]:
     """
     Normalize a single object or a sequence to a tuple.
     If the input is a single object, it returns a tuple with that object.
