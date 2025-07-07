@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Sequence, Tuple, TypeVar, Union
+from typing import Sequence, Tuple, TypeVar, Union
 
 # def is_equal_with_singleton(
 #     a: object | Sequence[object], b: object | Sequence[object]
@@ -29,16 +29,3 @@ def ensure_tuple_format(data: Union[T, Sequence[T]]) -> Union[Tuple[T], Tuple[T,
     if isinstance(data, Sequence):
         return tuple(data)
     return (data,)
-
-
-def flatten_single_row_arrow_dict(data_dict: Dict[str, List[Any]]) -> Dict[str, Any]:
-    """
-    Flatten a single row of an Arrow-compatible dictionary.
-    """
-    flattened_dict = {}
-    for key, value in data_dict.items():
-        if isinstance(value, list) and len(value) == 1:
-            flattened_dict[key] = value[0]
-        else:
-            flattened_dict[key] = value
-    return flattened_dict

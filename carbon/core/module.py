@@ -15,7 +15,7 @@ from carbon.core.connection import AsyncConnection, Connection, SyncConnection
 from carbon.core.datamethod import DataMethod, SinkConfiguration
 
 if TYPE_CHECKING:
-    from .data import Data
+    from carbon.data import Data
 
 
 class ConfigurableSink:

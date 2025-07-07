@@ -124,7 +124,7 @@ def safe_print(*args, **kwargs):
 
 robot = Robot()
 print(robot)
-execution_graph = ExecutionGraph(robot.as_reference())
+execution_graph = ExecutionGraph(robot)
 print("\nExecution Graph Layers:")
 print(execution_graph.layers)
 print("\nProcess Groups:")

@@ -1,13 +1,20 @@
 import types
 from dataclasses import Field
-from typing import Dict, List, Type, Union, cast, get_args, get_origin
+from typing import Dict, Type, Union, cast, get_args, get_origin
 
 import pyarrow as pa
 
-from carbon.core.data_utilities import Autofill, DataMeta
-from carbon.core.utilities import flatten_single_row_arrow_dict
+from carbon.data.utilities import DataMeta, flatten_single_row_arrow_dict
 
 QueueItem = Union["Data", "pa.Table"]
+
+
+class Autofill:
+    """
+    Marker class for fields that should be automatically filled in by the framework.
+    """
+
+    pass
 
 
 class Data(metaclass=DataMeta):
@@ -17,7 +24,7 @@ class Data(metaclass=DataMeta):
     """
 
     @classmethod
-    def get_schema(cls) -> pa.Schema:
+    def _get_schema(cls) -> pa.Schema:
         """
         Generate the PyArrow schema for this data type based on the type annotations.
         This method is called automatically by the DataMeta metaclass.
@@ -28,18 +35,6 @@ class Data(metaclass=DataMeta):
                 "Ensure you are using the Data base class with type annotations."
             )
         return getattr(cls, "_schema")
-
-    @property
-    def schema(self) -> pa.Schema:
-        """
-        Returns the PyArrow schema for this data type.
-        This is generated based on the type annotations of the class.
-        """
-        assert hasattr(self, "_schema"), (
-            "Data class must have a schema defined. "
-            "Ensure you are using the Data base class with type annotations."
-        )
-        return getattr(self, "_schema")
 
     def __repr__(self):
         return f"{self.__class__.__name__}({', '.join(f'{k}={v}' for k, v in self.__dict__.items())})"
@@ -68,25 +63,25 @@ class Data(metaclass=DataMeta):
                 result[key] = value
         return result
 
-    def to_arrow_record_batch(self) -> pa.RecordBatch:
+    def _to_arrow_record_batch(self) -> pa.RecordBatch:
         """
         Convert the data to a PyArrow RecordBatch.
         """
 
         return pa.RecordBatch.from_pylist(
-            [self._to_arrow_compatible_dict()], schema=self.schema
+            [self._to_arrow_compatible_dict()], schema=getattr(self, "_schema")
         )
 
-    def to_arrow_table(self) -> pa.Table:
+    def _to_arrow_table(self) -> pa.Table:
         """
         Convert the data to a PyArrow Table.
         """
         return pa.Table.from_pylist(
-            [self._to_arrow_compatible_dict()], schema=self.schema
+            [self._to_arrow_compatible_dict()], schema=getattr(self, "_schema")
         )
 
     @classmethod
-    def from_arrow_compatible_dict(cls, data_dict: Dict) -> "Data":
+    def _from_arrow_compatible_dict(cls, data_dict: Dict) -> "Data":
         """
         Create an instance of the Data class from a dictionary that is compatible with PyArrow.
         This method assumes that the dictionary has the same schema as the Data class.
@@ -109,7 +104,7 @@ class Data(metaclass=DataMeta):
                         f"Field '{field_name}' is expected to be a list of {item_type}, but got {type(value)}."
                     )
                 arrow_dict[field_name] = [
-                    item_type.from_arrow_compatible_dict(v)
+                    item_type._from_arrow_compatible_dict(v)
                     if isinstance(v, dict) and issubclass(item_type, Data)
                     else v
                     for v in value
@@ -121,7 +116,7 @@ class Data(metaclass=DataMeta):
                         f"Field '{field_name}' is expected to be a dict for tuple items, but got {type(value)}."
                     )
                 arrow_dict[field_name] = tuple(
-                    item_type.from_arrow_compatible_dict(value[f"item_{i}"])
+                    item_type._from_arrow_compatible_dict(value[f"item_{i}"])
                     if isinstance(value.get(f"item_{i}"), dict)
                     and issubclass(item_type, Data)
                     else value.get(f"item_{i}")
@@ -135,7 +130,7 @@ class Data(metaclass=DataMeta):
                 if len(non_none_types) == 1:
                     item_type = non_none_types[0]
                     if isinstance(value, dict) and issubclass(item_type, Data):
-                        arrow_dict[field_name] = item_type.from_arrow_compatible_dict(
+                        arrow_dict[field_name] = item_type._from_arrow_compatible_dict(
                             value
                         )
                     else:
@@ -144,7 +139,7 @@ class Data(metaclass=DataMeta):
                     raise TypeError(f"Unsupported Union type: {field_type}")
             elif isinstance(field_type, type) and issubclass(field_type, Data):
                 if isinstance(value, dict):
-                    arrow_dict[field_name] = field_type.from_arrow_compatible_dict(
+                    arrow_dict[field_name] = field_type._from_arrow_compatible_dict(
                         value
                     )
                 else:
@@ -161,11 +156,11 @@ class Data(metaclass=DataMeta):
         return cls(**arrow_dict)
 
     @classmethod
-    def from_arrow(cls, arrow_data: Union[pa.RecordBatch, pa.Table]) -> "Data":
+    def _from_arrow(cls, arrow_data: Union[pa.RecordBatch, pa.Table]) -> "Data":
         """
         Create an instance of the Data class from a PyArrow RecordBatch or Table.
         """
-        if arrow_data.schema != cls.get_schema():
+        if arrow_data.schema != cls._get_schema():
             raise ValueError(
                 "Arrow Table or RecordBatch schema does not match the Data class schema."
             )
@@ -175,7 +170,7 @@ class Data(metaclass=DataMeta):
                 "Arrow Table or RecordBatch must contain exactly one row for Data class instantiation."
             )
 
-        return cls.from_arrow_compatible_dict(
+        return cls._from_arrow_compatible_dict(
             flatten_single_row_arrow_dict(arrow_data.to_pydict())
         )
 
@@ -232,7 +227,7 @@ class Data(metaclass=DataMeta):
         Export the data to a format suitable for DataQueue.
         This method is used to convert the data to a PyArrow Table.
         """
-        return self.to_arrow_table()
+        return self._to_arrow_table()
 
 
 class DataQueue:
@@ -240,7 +235,7 @@ class DataQueue:
         self.size = size
         self.sticky = sticky
         self.data_type = data_type
-        self.arrow_table = pa.Table.from_pylist([], schema=data_type.get_schema())
+        self.arrow_table = pa.Table.from_pylist([], schema=data_type._get_schema())
 
     def _append_table(self, table: pa.Table) -> None:
         if self.arrow_table.num_rows >= self.size:
@@ -257,7 +252,7 @@ class DataQueue:
             assert isinstance(item, self.data_type), (
                 f"Item must be of type {self.data_type}, but got {type(item)}."
             )
-            self._append_table(item.to_arrow_table())
+            self._append_table(item._to_arrow_table())
 
     def _pop_table(self) -> "pa.Table":
         assert not self.is_empty(), "Queue is empty, cannot pop data."
@@ -273,7 +268,7 @@ class DataQueue:
         return table
 
     def pop(self) -> Data:
-        return self.data_type.from_arrow(self._pop_table())
+        return self.data_type._from_arrow(self._pop_table())
 
     def is_empty(self) -> bool:
         return self.arrow_table.num_rows == 0
@@ -290,34 +285,3 @@ class Header(Data):
 
 class StampedData(Data):
     header: Union[Header, Autofill]
-
-
-if __name__ == "__main__":
-    # Example usage
-    class NestedData(Data):
-        value: int
-        description: str
-
-    class CustomData(StampedData):
-        nested: NestedData
-        name: str
-        value: List[int]
-
-    data_instance = CustomData(
-        header=Autofill(),
-        nested=NestedData(value=42, description="Example nested data"),
-        name="example",
-        value=[42],
-    )
-
-    record_batch = data_instance.to_arrow_record_batch()
-
-    table = data_instance.to_arrow_table()
-
-    # Convert back from RecordBatch
-    new_instance = CustomData.from_arrow(record_batch)
-    print(new_instance)
-
-    # Convert back from Table
-    new_instance_from_table = CustomData.from_arrow(table)
-    print(new_instance_from_table)

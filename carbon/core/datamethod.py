@@ -13,10 +13,10 @@ from typing import (
 )
 
 if TYPE_CHECKING:
-    from carbon.core.data import Data
+    from carbon.data import Data
 
-from carbon.core.data import DataQueue, QueueItem
 from carbon.core.utilities import ensure_tuple_format
+from carbon.data import DataQueue, QueueItem
 
 
 @dataclass

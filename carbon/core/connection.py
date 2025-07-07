@@ -4,9 +4,9 @@ from typing import TYPE_CHECKING, Sequence, Tuple, Type, Union
 from carbon.core.utilities import ensure_tuple_format
 
 if TYPE_CHECKING:
-    from carbon.core.data import Data
     from carbon.core.datamethod import DataMethod
     from carbon.core.module import Module
+    from carbon.data import Data
 
 
 class ConnectionType(Enum):

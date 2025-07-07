@@ -1,7 +1,7 @@
 import sys
 import types
 from dataclasses import dataclass
-from typing import Union, cast, get_args, get_origin
+from typing import Any, Dict, List, Union, cast, get_args, get_origin
 
 import pyarrow as pa
 
@@ -9,14 +9,6 @@ if sys.version_info >= (3, 11):
     from typing import dataclass_transform
 else:
     from typing_extensions import dataclass_transform
-
-
-class Autofill:
-    """
-    Marker class for fields that should be automatically filled in by the framework.
-    """
-
-    pass
 
 
 @dataclass_transform()
@@ -67,19 +59,18 @@ class DataMeta(type):
         )
 
         # --- Handle Data Class Conversion ---
-        return (
-            dataclass(
-                cast(
-                    type,
-                    new_cls,
-                )
+        return dataclass(
+            cast(
+                type,
+                new_cls,
             )
-            if not hasattr(new_cls, "__dataclass_fields__")
-            else new_cls
         )
 
     def __repr__(cls):
         return f"{cls.__name__}({', '.join(f'{k}: {v.__name__}' for k, v in cls.__annotations__.items())})"
+
+
+SUPPORTED_TYPES = [int, float, str, bool, pa.DataType]
 
 
 def _generate_arrow_field_from_primitive_annotation(name, annotation: type):
@@ -88,8 +79,6 @@ def _generate_arrow_field_from_primitive_annotation(name, annotation: type):
         if schema is None:
             raise TypeError(f"Data type {annotation.__name__} has no schema defined.")
         return pa.field(name, pa.struct(schema))
-    elif issubclass(annotation, pa.DataType):
-        return pa.field(name, annotation)
     elif annotation is int:
         return pa.field(name, pa.int64())
     elif annotation is float:
@@ -98,6 +87,8 @@ def _generate_arrow_field_from_primitive_annotation(name, annotation: type):
         return pa.field(name, pa.string())
     elif annotation is bool:
         return pa.field(name, pa.bool_())
+    elif issubclass(annotation, pa.DataType):
+        return pa.field(name, annotation)
     else:
         raise TypeError(f"Unsupported type: {annotation}")
 
@@ -138,7 +129,11 @@ def generate_arrow_schema(attrs):
             )
         elif (type(annotation) is types.UnionType) or (get_origin(annotation) is Union):
             union_types = get_args(annotation)
-            non_none_types = [t for t in union_types if t is not Autofill]
+            non_none_types = [
+                t
+                for t in union_types
+                if (isinstance(t, tuple(SUPPORTED_TYPES)) or hasattr(t, "_schema"))
+            ]
             if len(non_none_types) == 1:
                 fields.append(
                     _generate_arrow_field_from_primitive_annotation(
@@ -155,3 +150,16 @@ def generate_arrow_schema(attrs):
             raise TypeError(f"Unsupported type: {annotation}")
 
     return pa.schema(fields)
+
+
+def flatten_single_row_arrow_dict(data_dict: Dict[str, List[Any]]) -> Dict[str, Any]:
+    """
+    Flatten a single row of an Arrow-compatible dictionary.
+    """
+    flattened_dict = {}
+    for key, value in data_dict.items():
+        if isinstance(value, list) and len(value) == 1:
+            flattened_dict[key] = value[0]
+        else:
+            flattened_dict[key] = value
+    return flattened_dict
