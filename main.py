@@ -38,7 +38,7 @@ class DifferentialDriveController(Module):
                 self,
                 (left_motor.module, right_motor.module),
                 (JointState, JointState),
-                blocking=True,
+                # blocking=True,
             )
 
     @sink(ConfigurableSink(TeleopCommand, sticky=False))
@@ -53,21 +53,67 @@ class DifferentialDriveController(Module):
         )
 
 
+class Transform(Data):
+    translation: Tuple[float, float, float]  # x, y, z
+    rotation: Tuple[float, float, float, float]  # quaternion (x, y, z, w)
+
+
 class ContinuousJoint(Module):
     def __init__(self, parent: ModuleReference, child: ModuleReference):
         super().__init__()
         self.parent = parent
         self.child = child
 
+        self.create_connection(
+            self,
+            child.module,
+            Transform,
+            blocking=True,
+        )
+
     @sink(JointState)
-    def update_state(self, state: JointState):
-        # Update the state of the joint based on the received state
-        safe_print(f"Updating joint state: {state}")
+    @source(Transform)
+    def update_state(self, state: JointState) -> Transform:
+        return Transform(
+            translation=(0.0, 0.0, 0.0),  # Placeholder for translation
+            rotation=(
+                0.0,
+                0.0,
+                0.0,
+                1.0,
+            ),  # Placeholder for rotation (identity quaternion)
+        )
+
+
+class Motor(ContinuousJoint):
+    def __init__(self, parent: ModuleReference, child: ModuleReference):
+        super().__init__(parent, child)
+
+
+class Pose(Data):
+    position: Tuple[float, float, float]  # x, y, z
+    orientation: Tuple[float, float, float, float]  # quaternion (x, y, z, w)
 
 
 class Wheel(Module):
     def __init__(self):
         super().__init__()
+        self.pose = Pose(
+            position=(0.0, 0.0, 0.0),  # Placeholder for position
+            orientation=(
+                0.0,
+                0.0,
+                0.0,
+                1.0,
+            ),  # Placeholder for orientation (identity quaternion)
+        )
+
+    @sink(Transform)
+    def transform(self, transform: Transform):
+        safe_print(f"Transforming wheel with: {transform}")
+        # Here you would apply the transform to the wheel's pose
+        self.pose.position = transform.translation
+        self.pose.orientation = transform.rotation
 
 
 class WheelBase(Module):
@@ -75,12 +121,12 @@ class WheelBase(Module):
         super().__init__()
 
         self.left_wheel = Wheel()
-        self.left_motor = ContinuousJoint(
+        self.left_motor = Motor(
             parent=self.as_reference(), child=self.left_wheel.as_reference()
         )
 
         self.right_wheel = Wheel()
-        self.right_motor = ContinuousJoint(
+        self.right_motor = Motor(
             parent=self.as_reference(), child=self.right_wheel.as_reference()
         )
 
