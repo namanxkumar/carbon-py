@@ -63,25 +63,16 @@ class DataMethod:
         self.method = method
         self.name: str = method.__name__
 
-        assert hasattr(method, "_sources"), (
-            f"Method {self.name} must have a _sources attribute defined."
+        self.sources = cast(
+            Tuple[Type["Data"], ...], getattr(method, "_sources", tuple())
         )
-        assert hasattr(method, "_sinks"), (
-            f"Method {self.name} must have a _sinks attribute defined."
-        )
-        assert hasattr(method, "_sink_configuration"), (
-            f"Method {self.name} must have a _sink_configuration attribute defined."
-        )
-
-        self.sources = cast(Tuple[Type["Data"], ...], getattr(method, "_sources"))
         self.source_indices: Tuple[int, ...] = tuple(range(len(self.sources)))
 
-        self.sinks = cast(Tuple[Type["Data"], ...], getattr(method, "_sinks"))
+        self.sinks = cast(Tuple[Type["Data"], ...], getattr(method, "_sinks", tuple()))
         self.sink_indices: Tuple[int, ...] = tuple(range(len(self.sinks)))
-
         sink_configuration = cast(
             Dict[int, SinkConfiguration],
-            getattr(method, "_sink_configuration"),
+            getattr(method, "_sink_configuration", {}),
         )
 
         self._input_queue: Dict[int, DataQueue] = {

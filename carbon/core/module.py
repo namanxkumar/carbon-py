@@ -89,7 +89,9 @@ class Module:
         for attribute_name in dir(self):
             attribute = getattr(self, attribute_name)
 
-            if callable(attribute):
+            if callable(attribute) and (
+                hasattr(attribute, "_sources") or hasattr(attribute, "_sinks")
+            ):
                 data_method = DataMethod(attribute)
             else:
                 continue
