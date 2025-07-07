@@ -11,7 +11,7 @@ from typing import (
     Union,
 )
 
-from carbon.core.connection import AsyncConnection, Connection, SyncConnection
+from carbon.core.connection import Connection
 from carbon.core.datamethod import DataMethod, SinkConfiguration
 
 if TYPE_CHECKING:
@@ -189,29 +189,15 @@ class Module:
         source: Union["Module", Sequence["Module"]],
         sink: Union["Module", Sequence["Module"]],
         data: Union[Type["Data"], Sequence[Type["Data"]]],
-        sync: bool = False,
+        blocking: bool = False,
     ):
         """
         Create a connection between source and sink modules for the specified data type.
         """
-        connection = (
-            AsyncConnection(source, sink, data)
-            if not sync
-            else SyncConnection(source, sink, data)
-        )
+        connection = Connection(source, sink, data, blocking=blocking)
         self._ensure_unique_connection(connection)
         self._connections.add(connection)
         return connection
-
-    def add_connection(
-        self,
-        connection: Union[AsyncConnection, SyncConnection],
-    ):
-        """
-        Add an existing connection to the module.
-        """
-        self._ensure_unique_connection(connection)
-        self._connections.add(connection)
 
     def block_connection(
         self,

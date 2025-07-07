@@ -1,7 +1,8 @@
 from dataclasses import dataclass
 
-from carbon import Data, Module, ModuleReference, sink, source
 from complexdata import Image, IMUData, LaserScan, OccupancyGrid, Odometry, Pose, Twist
+
+from carbon import Data, Module, ModuleReference, sink, source
 
 
 def startup(func):
@@ -94,7 +95,7 @@ class Localization(Module):
             self,
             mapping_module.module,
             Mapping.MapRequest,
-            sync=True,
+            blocking=True,
         )
 
     @startup

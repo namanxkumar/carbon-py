@@ -1,11 +1,10 @@
 from enum import Enum
-from typing import TYPE_CHECKING, Sequence, Tuple, Type, Union
+from typing import TYPE_CHECKING, Dict, Protocol, Sequence, Tuple, Type, Union
 
 from carbon.core.utilities import ensure_tuple_format
 
 if TYPE_CHECKING:
     from carbon.core.datamethod import DataMethod
-    from carbon.core.module import Module
     from carbon.data import Data
 
 
@@ -15,11 +14,16 @@ class ConnectionType(Enum):
     DIRECT = "direct"
 
 
+class ModuleLike(Protocol):
+    _sources: Dict[Tuple[Type["Data"], ...], "DataMethod"]
+    _sinks: Dict[Tuple[Type["Data"], ...], "DataMethod"]
+
+
 class Connection:
     def __init__(
         self,
-        source: Union["Module", Sequence["Module"]],
-        sink: Union["Module", Sequence["Module"]],
+        source: Union["ModuleLike", Sequence["ModuleLike"]],
+        sink: Union["ModuleLike", Sequence["ModuleLike"]],
         data: Union[Type["Data"], Sequence[Type["Data"]]],
         blocking: bool = False,
     ):
@@ -116,44 +120,4 @@ class Connection:
         return (
             f"Connection(source={self.source}, sink={self.sink}, "
             f"data={self.data}, blocking={self.blocking}"
-        )
-
-
-class AsyncConnection(Connection):
-    def __init__(
-        self,
-        source: Union["Module", Sequence["Module"]],
-        sink: Union["Module", Sequence["Module"]],
-        data: Union[Type["Data"], Sequence[Type["Data"]]],
-    ):
-        super().__init__(
-            source=source,
-            sink=sink,
-            data=data,
-            blocking=False,
-        )
-
-    def __repr__(self):
-        return (
-            f"AsyncConnection(source={self.source}, sink={self.sink}, data={self.data}"
-        )
-
-
-class SyncConnection(Connection):
-    def __init__(
-        self,
-        source: Union["Module", Sequence["Module"]],
-        sink: Union["Module", Sequence["Module"]],
-        data: Union[Type["Data"], Sequence[Type["Data"]]],
-    ):
-        super().__init__(
-            source=source,
-            sink=sink,
-            data=data,
-            blocking=True,
-        )
-
-    def __repr__(self):
-        return (
-            f"SyncConnection(source={self.source}, sink={self.sink}, data={self.data})"
         )
