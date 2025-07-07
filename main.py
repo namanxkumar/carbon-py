@@ -41,7 +41,7 @@ class DifferentialDriveController(Module):
                 blocking=True,
             )
 
-    @sink(ConfigurableSink(TeleopCommand, sticky=True))
+    @sink(ConfigurableSink(TeleopCommand, sticky=False))
     @source(JointState, JointState)
     def create_motor_commands(
         self, command: TeleopCommand
@@ -54,8 +54,10 @@ class DifferentialDriveController(Module):
 
 
 class ContinuousJoint(Module):
-    def __init__(self):
+    def __init__(self, parent: ModuleReference, child: ModuleReference):
         super().__init__()
+        self.parent = parent
+        self.child = child
 
     @sink(JointState)
     def update_state(self, state: JointState):
@@ -63,12 +65,24 @@ class ContinuousJoint(Module):
         safe_print(f"Updating joint state: {state}")
 
 
+class Wheel(Module):
+    def __init__(self):
+        super().__init__()
+
+
 class WheelBase(Module):
     def __init__(self):
         super().__init__()
-        self.left_motor = ContinuousJoint()
 
-        self.right_motor = ContinuousJoint()
+        self.left_wheel = Wheel()
+        self.left_motor = ContinuousJoint(
+            parent=self.as_reference(), child=self.left_wheel.as_reference()
+        )
+
+        self.right_wheel = Wheel()
+        self.right_motor = ContinuousJoint(
+            parent=self.as_reference(), child=self.right_wheel.as_reference()
+        )
 
         self.controller = DifferentialDriveController(
             left_motor=self.left_motor.as_reference(),
@@ -136,6 +150,8 @@ print("\nExecution Graph Layers:")
 print(execution_graph.layers)
 print("\nProcess Groups:")
 print(execution_graph.processes)
+print(execution_graph.process_layer_mapping)
+print(execution_graph.in_process_layer_mapping)
 print("\nConnections:")
 for connection in robot.get_connections():
     print(connection)
