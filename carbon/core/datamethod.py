@@ -98,6 +98,17 @@ class DataMethod:
         """Get the name of the method."""
         return self.method.__name__
 
+    @property
+    def active(self) -> bool:
+        """
+        Check if the method is active.
+        A method is considered active if it doesn't require any data to be executed
+        or if it has at least one active dependency or dependent.
+        """
+        if self.sinks and not self.active_dependencies:
+            return False  # If there are no active dependencies but there are sinks, the method is not active
+        return True
+
     def add_dependency(
         self,
         dependency: "DataMethod",
@@ -114,6 +125,14 @@ class DataMethod:
         """Add a dependent to the method."""
         self.dependent_to_configuration[dependent] = dependency_configuration
 
+    def block_dependency(self, dependency: "DataMethod") -> None:
+        """Block a dependency."""
+        self.dependency_to_configuration[dependency].active = False
+
+    def block_dependent(self, dependent: "DataMethod") -> None:
+        """Block a dependent."""
+        self.dependent_to_configuration[dependent].active = False
+
     @property
     def dependencies(self) -> Set["DataMethod"]:
         """Get the dependencies of the method."""
@@ -128,6 +147,12 @@ class DataMethod:
             if configuration.active
         )
 
+    def active_dependency_generator(self):
+        """Generator for active dependencies."""
+        for dependency, configuration in self.dependency_to_configuration.items():
+            if configuration.active:
+                yield dependency
+
     @property
     def dependents(self) -> Set["DataMethod"]:
         """Get the dependents of the method."""
@@ -141,6 +166,12 @@ class DataMethod:
             for dependent, configuration in self.dependent_to_configuration.items()
             if configuration.active
         )
+
+    def active_dependent_generator(self):
+        """Generator for active dependents."""
+        for dependent, configuration in self.dependent_to_configuration.items():
+            if configuration.active:
+                yield dependent
 
     def get_dependent_configuration(
         self, dependent: "DataMethod"

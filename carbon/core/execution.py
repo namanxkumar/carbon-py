@@ -51,7 +51,7 @@ class ExecutionGraph:
         """
 
         remaining_dependencies = {
-            method: len(method.dependencies) for method in methods
+            method: len(method.active_dependencies) for method in methods
         }
 
         layers: List[Set["DataMethod"]] = []
@@ -96,7 +96,7 @@ class ExecutionGraph:
                     process_layer_mapping[process_index][current_index].add(method)
                     in_process_layer_mapping[method] = current_index
                 remaining_methods.remove(method)
-                for dependent_method in method.dependents:
+                for dependent_method in method.active_dependent_generator():
                     remaining_dependencies[dependent_method] -= 1
 
             level_index += 1
@@ -110,8 +110,8 @@ class ExecutionGraph:
         group_mapping = {method: index for index, method in enumerate(methods)}
 
         for method in methods:
-            for dependency, configuration in method.dependency_to_configuration.items():
-                if configuration.blocking:
+            for dependency in method.active_dependency_generator():
+                if method.get_dependency_configuration(dependency).blocking:
                     node_group = group_mapping[method]
                     dependency_group = group_mapping[dependency]
                     # Check if the dependency is in a different group
@@ -163,7 +163,7 @@ class ExecutionGraph:
                     method_output = method.execute()
 
                     # Add the output to the input queue of the dependent methods
-                    for dependent_method in method.dependents:
+                    for dependent_method in method.active_dependent_generator():
                         assert method_output is not None, (
                             f"Method {method.name} returned None, but it should return a valid output for its dependents."
                         )

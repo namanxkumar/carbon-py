@@ -92,9 +92,9 @@ class Localization(Module):
         super().__init__()
 
         self.create_connection(
+            Mapping.MapRequest,
             self,
             mapping_module.module,
-            Mapping.MapRequest,
             sync=True,
         )
 

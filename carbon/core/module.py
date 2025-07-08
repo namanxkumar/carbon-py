@@ -81,7 +81,6 @@ class Module:
         self._sources: Dict[Tuple[Type["Data"], ...], "DataMethod"] = {}
         self._methods: Set["DataMethod"] = set()
         self._connections: Set["Connection"] = set()
-        self._blocked_connections: Set["Connection"] = set()
 
         # Collect sources and sinks
         for attribute_name in dir(self):
@@ -176,43 +175,65 @@ class Module:
 
         return self
 
-    def get_connections(self, recursive: bool = True, _memo: Optional[Set] = None):
+    def get_connections(
+        self,
+        recursive: bool = True,
+        active_only: bool = True,
+        _memo: Optional[Set] = None,
+    ):
         if not recursive:
-            return self._connections - self._blocked_connections
+            if active_only:
+                return {conn for conn in self._connections if conn.active}
+            return self._connections
 
         if _memo is None:
             _memo = set()
 
-        connections = self._connections.copy()
+        if active_only:
+            connections = {conn for conn in self._connections if conn.active}
+        else:
+            connections = self._connections.copy()
 
         for module in self._modules:
             if module not in _memo:
                 _memo.add(module)
-                connections.update(module.get_connections(recursive, _memo))
+                connections.update(
+                    module.get_connections(recursive, active_only, _memo)
+                )
 
-        return connections - self._blocked_connections
+        return connections
 
-    def get_methods(self, recursive: bool = True, _memo: Optional[Set] = None):
+    def get_methods(
+        self,
+        recursive: bool = True,
+        active_only: bool = True,
+        _memo: Optional[Set] = None,
+    ):
         if not recursive:
+            if active_only:
+                return {method for method in self._methods if method.active}
             return self._methods
 
         if _memo is None:
             _memo = set()
 
-        methods = self._methods.copy()
+        if active_only:
+            methods = {method for method in self._methods if method.active}
+        else:
+            methods = self._methods.copy()
 
         for module in self._modules:
             if module not in _memo:
                 _memo.add(module)
-                methods.update(module.get_methods(recursive, _memo))
+                methods.update(module.get_methods(recursive, active_only, _memo))
 
         return methods
 
     def create_connection(
         self,
+        data: Union[Type["Data"], Sequence[Type["Data"]]],
         source: Union["Module", Sequence["Module"]],
         sink: Union["Module", Sequence["Module"]],
-        data: Union[Type["Data"], Sequence[Type["Data"]]],
         sync: bool = False,
     ):
         """
@@ -226,9 +247,9 @@ class Module:
 
     def block_connection(
         self,
-        source: Union["Module", Sequence["Module"], None],
-        sink: Union["Module", Sequence["Module"], None],
         data: Union[Type["Data"], Sequence[Type["Data"]]],
+        source: Union["Module", Sequence["Module"], None] = None,
+        sink: Union["Module", Sequence["Module"], None] = None,
     ):
         """
         Block a connection between source and sink modules for the specified data type.
@@ -262,6 +283,4 @@ class Module:
                 removal = True
             if removal:
                 existing_connection.block()
-                self._blocked_connections.add(existing_connection)
-
         return self

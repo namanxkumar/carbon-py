@@ -41,7 +41,7 @@ class Connection:
         self.sink = ensure_tuple_format(sink)
         self.data = ensure_tuple_format(data)
         self.sync = sync
-        self.blocked = False
+        self.active = True
         self.type: ConnectionType = ConnectionType.DIRECT  # Default type
         self.source_methods: Tuple["DataMethod", ...]
         self.sink_methods: Tuple["DataMethod", ...]
@@ -114,7 +114,7 @@ class Connection:
 
     def block(self):
         """Block the connection, preventing data from being sent."""
-        self.blocked = True
+        self.active = False
         for source_method in self.source_methods:
             for sink_method in self.sink_methods:
                 sink_method.dependency_to_configuration[source_method].active = False

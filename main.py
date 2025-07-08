@@ -38,9 +38,9 @@ class DifferentialDriveController(Module):
 
         if update_motor_states:
             self.create_connection(
+                (JointState, JointState),
                 self,
                 (left_motor.module, right_motor.module),
-                (JointState, JointState),
                 sync=True,
             )
 
@@ -98,6 +98,8 @@ class WheelBase(Module):
             parent=self.as_reference(), child=self.right_wheel.as_reference()
         )
 
+        # self.block_connection(source=None, sink=None, data=Transform)
+
         self.controller = DifferentialDriveController(
             left_motor=self.left_motor.as_reference(),
             right_motor=self.right_motor.as_reference(),
@@ -148,7 +150,7 @@ class Robot(Module):
         self.wheelbase = WheelBase()
         self.teleop = Teleop()
 
-        self.create_connection(self.teleop, self.wheelbase.controller, TeleopCommand)
+        self.create_connection(TeleopCommand, self.teleop, self.wheelbase.controller)
 
 
 robot = Robot()
@@ -157,9 +159,12 @@ execution_graph = ExecutionGraph(robot)
 print("\nExecution Graph Layers:")
 print(execution_graph.layers)
 print("\nProcess Groups:")
-print(execution_graph.processes)
-print(execution_graph.process_layer_mapping)
-print(execution_graph.in_process_layer_mapping)
+for process_index, process in execution_graph.processes.items():
+    print(f"Process {process_index}:")
+    for method in process:
+        print(
+            f"  {method.name} (depends on: {method.dependencies}, produces: {method.dependents})"
+        )
 print("\nConnections:")
 for connection in robot.get_connections():
     print(connection)

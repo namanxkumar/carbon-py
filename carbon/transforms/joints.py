@@ -42,9 +42,9 @@ class Joint(Module, ABC):
         )
 
         self.create_connection(
+            Transform,
             self,
             self.child.module,
-            Transform,
             sync=True,
         )
 
