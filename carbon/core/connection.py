@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Dict, Protocol, Sequence, Tuple, Type, Union
+from typing import Dict, List, Optional, Protocol, Sequence, Tuple, Type, Union, cast
 
 from carbon.core.datamethod import (
     DataMethod,
@@ -16,9 +16,24 @@ class ConnectionType(Enum):
     DIRECT = "direct"
 
 
+class ConnectedLike(Protocol):
+    module: "ModuleLike"
+    connection_index: Optional[
+        int
+    ]  # Index to merge or split data (None if direct connection)
+    blocking: bool  # Whether the dependency is blocking or not
+
+
+class InterfaceLike(Protocol):
+    method: "DataMethod"
+    connected: List[Tuple["ModuleLike", Optional[int]]]
+
+
 class ModuleLike(Protocol):
     _sources: Dict[Tuple[Type["Data"], ...], "DataMethod"]
     _sinks: Dict[Tuple[Type["Data"], ...], "DataMethod"]
+    _sinked_to_interface: Dict[Tuple[Type["Data"], ...], InterfaceLike]
+    _sourced_to_interface: Dict[Tuple[Type["Data"], ...], InterfaceLike]
 
 
 class Connection:
@@ -56,39 +71,79 @@ class Connection:
             )
 
         if len(self.source) > 1:
-            for src, dat in zip(self.source, self.data):
+            self.type = ConnectionType.MERGE
+
+            for src_index, (src, dat) in enumerate(zip(self.source, self.data)):
                 assert ensure_tuple_format(dat) in src._sources, (
                     f"Source {src} must have data type {dat} defined in its sources."
                 )
+                src._sourced_to_interface[ensure_tuple_format(dat)].connected.append(
+                    (cast(Tuple[ModuleLike], self.sink)[0], src_index)
+                )
+
             self.source_methods = tuple(
                 [
                     src._sources[ensure_tuple_format(dat)]
                     for src, dat in zip(self.source, self.data)
                 ]
             )
-            self.type = ConnectionType.MERGE
-        elif len(self.source) == 1:
-            assert self.data in self.source[0]._sources, (
-                f"Source {self.source[0]} must have data type {self.data[0]} defined in its sources."
-            )
-            self.source_methods = tuple([self.source[0]._sources[self.data]])
-
         if len(self.sink) > 1:
-            for snk, dat in zip(self.sink, self.data):
+            self.type = ConnectionType.SPLIT
+
+            for snk_index, (snk, dat) in enumerate(zip(self.sink, self.data)):
                 assert ensure_tuple_format(dat) in snk._sinks, (
                     f"Sink {snk} must have data type {dat} defined in its sinks."
                 )
+                snk._sinked_to_interface[ensure_tuple_format(dat)].connected.append(
+                    (cast(Tuple[ModuleLike], self.source)[0], snk_index)
+                )
+
             self.sink_methods = tuple(
                 [
                     snk._sinks[ensure_tuple_format(dat)]
                     for snk, dat in zip(self.sink, self.data)
                 ]
             )
-            self.type = ConnectionType.SPLIT
-        elif len(self.sink) == 1:
+
+        if len(self.source) == 1:
+            assert self.data in self.source[0]._sources, (
+                f"Source {self.source[0]} must have data type {self.data[0]} defined in its sources."
+            )
+
+            if self.type is ConnectionType.SPLIT:
+                self.source[0]._sourced_to_interface[
+                    ensure_tuple_format(self.data)
+                ].connected += [
+                    (sink, sink_index) for sink_index, sink in enumerate(self.sink)
+                ]
+            else:
+                # DIRECT type
+                self.source[0]._sourced_to_interface[
+                    ensure_tuple_format(self.data)
+                ].connected.append((cast(Tuple[ModuleLike], self.sink)[0], None))
+
+            self.source_methods = tuple([self.source[0]._sources[self.data]])
+
+        if len(self.sink) == 1:
+            # DIRECT type
+
             assert self.data in self.sink[0]._sinks, (
                 f"Sink {self.sink[0]} must have data type {self.data[0]} defined in its sinks."
             )
+
+            if self.type is ConnectionType.MERGE:
+                self.sink[0]._sinked_to_interface[
+                    ensure_tuple_format(self.data)
+                ].connected += [
+                    (source, source_index)
+                    for source_index, source in enumerate(self.source)
+                ]
+            else:
+                # DIRECT type
+                self.sink[0]._sinked_to_interface[
+                    ensure_tuple_format(self.data)
+                ].connected.append((cast(Tuple[ModuleLike], self.source)[0], None))
+
             self.sink_methods = tuple([self.sink[0]._sinks[self.data]])
 
         for source_index, source_method in enumerate(self.source_methods):

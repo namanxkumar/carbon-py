@@ -7,13 +7,14 @@ from carbon import (
     Autofill,
     ConfigurableSink,
     Data,
-    ExecutionGraph,
+    # ExecutionGraph,
     Module,
     ModuleReference,
     safe_print,
     sink,
     source,
 )
+from carbon.core.execution2 import ExecutionGraph
 from carbon.transforms import (
     ContinuousJoint,
     CylindricalGeometry,
@@ -154,20 +155,24 @@ class Robot(Module):
 robot = Robot()
 print(robot)
 execution_graph = ExecutionGraph(robot)
-print("\nExecution Graph Layers:")
-print(execution_graph.layers)
+# print("\nExecution Graph Layers:")
+# print(execution_graph.layers)
 print("\nProcess Groups:")
-print(execution_graph.processes)
-print(execution_graph.process_layer_mapping)
-print(execution_graph.in_process_layer_mapping)
-print("\nConnections:")
-for connection in robot.get_connections():
-    print(connection)
-print("\nMethods:")
-for method in robot.get_methods():
-    print(method.name)
-    print("  Depends on:", method.dependents)
-    print("  Produces for:", method.dependencies)
-print()
-execution_graph.execute()
-print("\nExecution completed.")
+for index, group in execution_graph.processes.items():
+    print(index)
+    for process in group:
+        print(process)
+# print(execution_graph.processes)
+# print(execution_graph.process_mapping)
+# print(execution_graph.in_process_layer_mapping)
+# print("\nConnections:")
+# for connection in robot.get_connections():
+#     print(connection)
+# print("\nMethods:")
+# for method in robot.get_methods():
+#     print(method.name)
+#     print("  Depends on:", method.dependents)
+#     print("  Produces for:", method.dependencies)
+# print()
+# execution_graph.execute()
+# print("\nExecution completed.")

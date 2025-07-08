@@ -1,3 +1,5 @@
+from dataclasses import dataclass, field
+from enum import Enum
 from typing import (
     Callable,
     Dict,
@@ -8,11 +10,11 @@ from typing import (
     Tuple,
     Type,
     Union,
+    cast,
 )
 
-from carbon.core.connection import Connection
 from carbon.core.datamethod import DataMethod, SinkConfiguration
-from carbon.core.utilities import is_equal_with_singleton
+from carbon.core.utilities import ensure_tuple_format, is_equal_with_singleton
 from carbon.data import Data
 
 
@@ -74,12 +76,52 @@ class ModuleReference:
         self.module = module
 
 
+@dataclass
+class Connected:
+    """
+    Configuration for a connected module.
+    - connection_index: Index to merge or split data (None if direct connection).
+    - blocking: Whether the dependency is blocking or not.
+    """
+
+    module: "Module"
+    data: Tuple[Type["Data"], ...]  # Data types this connection handles
+    connection_index: Optional[
+        int
+    ]  # Index to merge or split data (None if direct connection)
+    sync: bool
+
+
+@dataclass
+class Dependency:
+    module: "Module"
+    data: Tuple[Type["Data"], ...]
+    merge_sink_index: Optional[int] = None
+    sync: bool = False
+
+
+@dataclass
+class Dependent:
+    module: "Module"
+    data: Tuple[Type["Data"], ...]
+    split_source_index: Optional[int] = None
+    sync: bool = False
+
+
+@dataclass
+class Interface:
+    method: "DataMethod"
+    connected: List["Connected"] = field(default_factory=list)
+
+
 class Module:
     def __init__(self):
         self._modules: List["Module"] = []
-        self._sinks: Dict[Tuple[Type["Data"], ...], "DataMethod"] = {}
-        self._sources: Dict[Tuple[Type["Data"], ...], "DataMethod"] = {}
-        self._methods: Set["DataMethod"] = set()
+        self._sinked_to_interface: Dict[Tuple[Type["Data"], ...], Interface] = {}
+        self._sourced_to_interface: Dict[Tuple[Type["Data"], ...], Interface] = {}
+        self._sinks: Dict[Tuple[Type["Data"], ...], "DataMethod"] = {}  # TBD
+        self._sources: Dict[Tuple[Type["Data"], ...], "DataMethod"] = {}  # TBD
+        self._methods: Set["DataMethod"] = set()  # TBD
         self._connections: Set["Connection"] = set()
         self._blocked_connections: Set["Connection"] = set()
 
@@ -95,21 +137,39 @@ class Module:
                 continue
 
             if hasattr(attribute, "_sources"):
-                datatype: Tuple[Type["Data"], ...] = getattr(attribute, "_sources")
-                if self._sources.get(datatype) is None:
-                    self._sources[datatype] = data_method
+                data_type: Tuple[Type["Data"], ...] = getattr(attribute, "_sources")
+                if self._sourced_to_interface.get(data_type) is None:
+                    self._sourced_to_interface[data_type] = Interface(
+                        method=data_method
+                    )
                     self._methods.add(data_method)
                 else:
                     raise ValueError(
-                        f"Multiple sources defined for data type {datatype}"
+                        f"Multiple sources defined for data type {data_type}"
                     )
-            if hasattr(attribute, "_sinks"):
-                datatype: Tuple[Type["Data"], ...] = getattr(attribute, "_sinks")
-                if self._sinks.get(datatype) is None:
-                    self._sinks[datatype] = data_method
+                if self._sources.get(data_type) is None:
+                    self._sources[data_type] = data_method
                     self._methods.add(data_method)
                 else:
-                    raise ValueError(f"Multiple sinks defined for data type {datatype}")
+                    raise ValueError(
+                        f"Multiple sources defined for data type {data_type}"
+                    )
+            if hasattr(attribute, "_sinks"):
+                data_type: Tuple[Type["Data"], ...] = getattr(attribute, "_sinks")
+                if self._sinked_to_interface.get(data_type) is None:
+                    self._sinked_to_interface[data_type] = Interface(method=data_method)
+                    self._methods.add(data_method)
+                else:
+                    raise ValueError(
+                        f"Multiple sinks defined for data type {data_type}"
+                    )
+                if self._sinks.get(data_type) is None:
+                    self._sinks[data_type] = data_method
+                    self._methods.add(data_method)
+                else:
+                    raise ValueError(
+                        f"Multiple sinks defined for data type {data_type}"
+                    )
 
     def __setattr__(self, name, value):
         if isinstance(value, Module):
@@ -176,6 +236,70 @@ class Module:
 
         return self
 
+    def get_dependencies(self):
+        """
+        Get all dependencies of this module.
+        """
+        dependencies: Set[Dependency] = set()
+
+        for data_type, interface in self._sinked_to_interface.items():
+            for connected in interface.connected:
+                dependencies.add(
+                    Dependency(
+                        module=connected.module,
+                        data=data_type,
+                        merge_sink_index=connected.connection_index,
+                        sync=connected.sync,
+                    )
+                )
+
+        return dependencies
+
+    def get_dependents(self):
+        """
+        Get all dependents of this module.
+        """
+        dependents: Set[Dependent] = set()
+
+        for data_type, interface in self._sourced_to_interface.items():
+            for connected in interface.connected:
+                dependents.add(
+                    Dependent(
+                        module=connected.module,
+                        data=data_type,
+                        split_source_index=connected.connection_index,
+                        sync=connected.sync,
+                    )
+                )
+
+        return dependents
+
+    def get_dependencies_as_generator(self):
+        """
+        Get all dependencies of this module as a generator.
+        """
+        for data_type, interface in self._sinked_to_interface.items():
+            for connected in interface.connected:
+                yield Dependency(
+                    module=connected.module,
+                    data=data_type,
+                    merge_sink_index=connected.connection_index,
+                    sync=connected.sync,
+                )
+
+    def get_dependents_as_generator(self):
+        """
+        Get all dependents of this module as a generator.
+        """
+        for data_type, interface in self._sourced_to_interface.items():
+            for connected in interface.connected:
+                yield Dependent(
+                    module=connected.module,
+                    data=data_type,
+                    split_source_index=connected.connection_index,
+                    sync=connected.sync,
+                )
+
     def get_connections(self, recursive: bool = True, _memo: Optional[Set] = None):
         if not recursive:
             return self._connections - self._blocked_connections
@@ -208,6 +332,25 @@ class Module:
 
         return methods
 
+    def get_modules(self, recursive: bool = True, _memo: Optional[Set] = None):
+        """
+        Get all modules contained within this module, optionally recursively.
+        """
+        if not recursive:
+            return self._modules
+
+        if _memo is None:
+            _memo = set()
+
+        modules = self._modules.copy()
+
+        for module in self._modules:
+            if module not in _memo:
+                _memo.add(module)
+                modules.extend(module.get_modules(recursive, _memo))
+
+        return modules
+
     def create_connection(
         self,
         source: Union["Module", Sequence["Module"]],
@@ -218,7 +361,7 @@ class Module:
         """
         Create a connection between source and sink modules for the specified data type.
         """
-        connection = Connection(source, sink, data, sync=sync)
+        connection = Connection(source, sink, data, sync=sync)  # type: ignore
         self._ensure_unique_connection(connection)
         self._connections.add(connection)
 
@@ -265,3 +408,138 @@ class Module:
                 self._blocked_connections.add(existing_connection)
 
         return self
+
+
+class ConnectionType(Enum):
+    MERGE = "merge"
+    SPLIT = "split"
+    DIRECT = "direct"
+
+
+class Connection:
+    def __init__(
+        self,
+        source: Union["Module", Sequence["Module"]],
+        sink: Union["Module", Sequence["Module"]],
+        data: Union[Type["Data"], Sequence[Type["Data"]]],
+        sync: bool = False,
+    ):
+        assert not (
+            (isinstance(source, Sequence) and len(source) > 1)
+            and (isinstance(sink, Sequence) and len(sink) > 1)
+        ), (
+            "Cannot connect multiple sources to multiple sinks directly. "
+            "Use a single source or sink, or create a connection for each pair."
+        )
+
+        self.source = ensure_tuple_format(source)
+        self.sink = ensure_tuple_format(sink)
+        self.data = ensure_tuple_format(data)
+        self.sync = sync
+        self.blocked = False
+        self.type: ConnectionType = ConnectionType.DIRECT  # Default type
+
+        if len(self.source) > 1 and len(self.source) != len(self.data):
+            raise ValueError(
+                "If multiple sources are provided, data must also be a sequence of the same length."
+            )
+        elif len(self.sink) > 1 and len(self.sink) != len(self.data):
+            raise ValueError(
+                "If multiple sinks are provided, data must also be a sequence of the same length."
+            )
+
+        if len(self.source) > 1:
+            self.type = ConnectionType.MERGE
+
+            for src_index, (src, dat) in enumerate(zip(self.source, self.data)):
+                assert ensure_tuple_format(dat) in src._sources, (
+                    f"Source {src} must have data type {dat} defined in its sources."
+                )
+                src._sourced_to_interface[ensure_tuple_format(dat)].connected.append(
+                    Connected(
+                        cast(Tuple[Module], self.sink)[0],
+                        self.data,
+                        src_index,
+                        self.sync,
+                    )
+                )
+        if len(self.sink) > 1:
+            self.type = ConnectionType.SPLIT
+
+            for snk_index, (snk, dat) in enumerate(zip(self.sink, self.data)):
+                assert ensure_tuple_format(dat) in snk._sinks, (
+                    f"Sink {snk} must have data type {dat} defined in its sinks."
+                )
+                snk._sinked_to_interface[ensure_tuple_format(dat)].connected.append(
+                    Connected(
+                        cast(Tuple[Module], self.source)[0],
+                        self.data,
+                        snk_index,
+                        self.sync,
+                    )
+                )
+
+        if len(self.source) == 1:
+            assert self.data in self.source[0]._sources, (
+                f"Source {self.source[0]} must have data type {self.data[0]} defined in its sources."
+            )
+
+            if self.type is ConnectionType.SPLIT:
+                self.source[0]._sourced_to_interface[
+                    ensure_tuple_format(self.data)
+                ].connected += [
+                    Connected(sink, self.data, sink_index, self.sync)
+                    for sink_index, sink in enumerate(self.sink)
+                ]
+            else:
+                # DIRECT type
+                self.source[0]._sourced_to_interface[
+                    ensure_tuple_format(self.data)
+                ].connected.append(
+                    Connected(
+                        cast(Tuple[Module], self.sink)[0], self.data, None, self.sync
+                    )
+                )
+
+        if len(self.sink) == 1:
+            assert self.data in self.sink[0]._sinks, (
+                f"Sink {self.sink[0]} must have data type {self.data[0]} defined in its sinks."
+            )
+
+            if self.type is ConnectionType.MERGE:
+                self.sink[0]._sinked_to_interface[
+                    ensure_tuple_format(self.data)
+                ].connected += [
+                    Connected(source, self.data, source_index, self.sync)
+                    for source_index, source in enumerate(self.source)
+                ]
+            else:
+                # DIRECT type
+                self.sink[0]._sinked_to_interface[
+                    ensure_tuple_format(self.data)
+                ].connected.append(
+                    Connected(
+                        cast(Tuple[Module], self.source)[0], self.data, None, self.sync
+                    )
+                )
+
+    def block(self):
+        """Block the connection, preventing data from being sent."""
+        self.blocked = True
+
+    def __hash__(self):
+        return hash((self.source, self.sink, self.data))
+
+    def __eq__(self, other):
+        return (
+            isinstance(other, Connection)
+            and self.source == other.source
+            and self.sink == other.sink
+            and self.data == other.data
+        )
+
+    def __repr__(self):
+        return (
+            f"Connection(source={self.source}, sink={self.sink}, "
+            f"data={self.data}, blocking={self.sync}"
+        )
