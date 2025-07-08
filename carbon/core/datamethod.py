@@ -20,11 +20,11 @@ class DependencyConfiguration:
     """
     Configuration for a dependency.
     - merge_sink_index: Index of the sink to merge data into (None if all sinks are received).
-    - blocking: Whether the dependency is blocking or not.
+    - sync: Whether the dependency is sync or not.
     """
 
     merge_sink_index: Optional[int]
-    blocking: bool
+    sync: bool
     active: bool = True  # Whether the dependency is active or not
 
 
@@ -33,11 +33,11 @@ class DependentConfiguration:
     """
     Configuration for a dependent.
     - split_source_index: Index of the source to split data from (None if all sources are sent).
-    - blocking: Whether the dependent is blocking or not.
+    - sync: Whether the dependent is sync or not.
     """
 
     split_source_index: Optional[int]
-    blocking: bool
+    sync: bool
     active: bool = True  # Whether the dependent is active or not
 
 
@@ -83,11 +83,11 @@ class DataMethod:
             self.sink_indices
         )  # Indices of sinks that are not ready for execution
 
-        self.dependency_to_configuration: Dict[
+        self._dependency_to_configuration: Dict[
             "DataMethod", DependencyConfiguration
         ] = {}  # Dependencies of this method
 
-        self.dependent_to_configuration: Dict[
+        self._dependent_to_configuration: Dict[
             "DataMethod", DependentConfiguration
         ] = {}  # Dependents of this method
 
@@ -115,7 +115,7 @@ class DataMethod:
         dependency_configuration: DependencyConfiguration,
     ) -> None:
         """Add a dependency to the method."""
-        self.dependency_to_configuration[dependency] = dependency_configuration
+        self._dependency_to_configuration[dependency] = dependency_configuration
 
     def add_dependent(
         self,
@@ -123,53 +123,53 @@ class DataMethod:
         dependency_configuration: DependentConfiguration,
     ) -> None:
         """Add a dependent to the method."""
-        self.dependent_to_configuration[dependent] = dependency_configuration
+        self._dependent_to_configuration[dependent] = dependency_configuration
 
     def block_dependency(self, dependency: "DataMethod") -> None:
         """Block a dependency."""
-        self.dependency_to_configuration[dependency].active = False
+        self._dependency_to_configuration[dependency].active = False
 
     def block_dependent(self, dependent: "DataMethod") -> None:
         """Block a dependent."""
-        self.dependent_to_configuration[dependent].active = False
+        self._dependent_to_configuration[dependent].active = False
 
     @property
     def dependencies(self) -> Set["DataMethod"]:
         """Get the dependencies of the method."""
-        return set(self.dependency_to_configuration.keys())
+        return set(self._dependency_to_configuration.keys())
 
     @property
     def active_dependencies(self) -> Set["DataMethod"]:
         """Get the dependencies of the method."""
         return set(
             dependency
-            for dependency, configuration in self.dependency_to_configuration.items()
+            for dependency, configuration in self._dependency_to_configuration.items()
             if configuration.active
         )
 
     def active_dependency_generator(self):
         """Generator for active dependencies."""
-        for dependency, configuration in self.dependency_to_configuration.items():
+        for dependency, configuration in self._dependency_to_configuration.items():
             if configuration.active:
                 yield dependency
 
     @property
     def dependents(self) -> Set["DataMethod"]:
         """Get the dependents of the method."""
-        return set(self.dependent_to_configuration.keys())
+        return set(self._dependent_to_configuration.keys())
 
     @property
     def active_dependents(self) -> Set["DataMethod"]:
         """Get the dependents of the method."""
         return set(
             dependent
-            for dependent, configuration in self.dependent_to_configuration.items()
+            for dependent, configuration in self._dependent_to_configuration.items()
             if configuration.active
         )
 
     def active_dependent_generator(self):
         """Generator for active dependents."""
-        for dependent, configuration in self.dependent_to_configuration.items():
+        for dependent, configuration in self._dependent_to_configuration.items():
             if configuration.active:
                 yield dependent
 
@@ -177,13 +177,13 @@ class DataMethod:
         self, dependent: "DataMethod"
     ) -> DependentConfiguration:
         """Get the configuration for a dependent."""
-        return self.dependent_to_configuration[dependent]
+        return self._dependent_to_configuration[dependent]
 
     def get_dependency_configuration(
         self, dependency: "DataMethod"
     ) -> DependencyConfiguration:
         """Get the configuration for a dependency."""
-        return self.dependency_to_configuration[dependency]
+        return self._dependency_to_configuration[dependency]
 
     @property
     def is_ready_for_execution(self) -> bool:
@@ -209,8 +209,9 @@ class DataMethod:
         dependency: "DataMethod",
         data: Union["QueueItem", Tuple["QueueItem", ...]],
     ) -> None:
-        merge_sink_index = self.dependency_to_configuration[dependency].merge_sink_index
-        if merge_sink_index is None:
+        configuration = self.get_dependency_configuration(dependency)
+
+        if configuration.merge_sink_index is None:
             assert isinstance(data, tuple), "Expected data to be a tuple"
 
             # If the dependency is a direct connection, add all data to the input queue
@@ -222,10 +223,10 @@ class DataMethod:
                 "Expected data to be a singleton tuple or a Data instance"
             )
 
-            self.input_queue[merge_sink_index].append(
+            self.input_queue[configuration.merge_sink_index].append(
                 data[0] if isinstance(data, tuple) else data
             )
-            self.remaining_for_execution.discard(merge_sink_index)
+            self.remaining_for_execution.discard(configuration.merge_sink_index)
 
     def execute(self) -> Optional[Tuple[QueueItem, ...]]:
         """Execute the method and return the output."""

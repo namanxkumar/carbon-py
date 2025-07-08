@@ -111,7 +111,7 @@ class ExecutionGraph:
 
         for method in methods:
             for dependency in method.active_dependency_generator():
-                if method.get_dependency_configuration(dependency).blocking:
+                if method.get_dependency_configuration(dependency).sync:
                     node_group = group_mapping[method]
                     dependency_group = group_mapping[dependency]
                     # Check if the dependency is in a different group
@@ -158,7 +158,6 @@ class ExecutionGraph:
                             self.process_exited_manually[process_index] = False
                             return
                         continue
-
                     # If there are data to process, execute the method
                     method_output = method.execute()
 
@@ -187,6 +186,7 @@ class ExecutionGraph:
                             self.process_readiness[
                                 self.process_mapping[dependent_method]
                             ] = True
+            # break
 
     def _monitor_processes(self):
         """Monitor the processes and execute them in the correct order."""

@@ -99,7 +99,7 @@ class Connection:
                         merge_sink_index=(
                             None if self.type is ConnectionType.DIRECT else source_index
                         ),
-                        blocking=self.sync,
+                        sync=self.sync,
                     ),
                 )
                 source_method.add_dependent(
@@ -108,7 +108,7 @@ class Connection:
                         split_source_index=(
                             None if self.type is ConnectionType.DIRECT else sink_index
                         ),
-                        blocking=self.sync,
+                        sync=self.sync,
                     ),
                 )
 
@@ -117,8 +117,8 @@ class Connection:
         self.active = False
         for source_method in self.source_methods:
             for sink_method in self.sink_methods:
-                sink_method.dependency_to_configuration[source_method].active = False
-                source_method.dependent_to_configuration[sink_method].active = False
+                sink_method.block_dependency(source_method)
+                source_method.block_dependent(sink_method)
 
     def __hash__(self):
         return hash((self.source, self.sink, self.data))
@@ -134,5 +134,5 @@ class Connection:
     def __repr__(self):
         return (
             f"Connection(source={self.source}, sink={self.sink}, "
-            f"data={self.data}, blocking={self.sync}"
+            f"data={self.data}, sync={self.sync}"
         )
