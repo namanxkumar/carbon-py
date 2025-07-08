@@ -1,7 +1,11 @@
 from enum import Enum
 from typing import Dict, Protocol, Sequence, Tuple, Type, Union
 
-from carbon.core.datamethod import DataMethod
+from carbon.core.datamethod import (
+    DataMethod,
+    DependencyConfiguration,
+    DependentConfiguration,
+)
 from carbon.core.utilities import ensure_tuple_format
 from carbon.data import Data
 
@@ -23,7 +27,7 @@ class Connection:
         source: Union["ModuleLike", Sequence["ModuleLike"]],
         sink: Union["ModuleLike", Sequence["ModuleLike"]],
         data: Union[Type["Data"], Sequence[Type["Data"]]],
-        blocking: bool = False,
+        sync: bool = False,
     ):
         assert not (
             (isinstance(source, Sequence) and len(source) > 1)
@@ -36,7 +40,8 @@ class Connection:
         self.source = ensure_tuple_format(source)
         self.sink = ensure_tuple_format(sink)
         self.data = ensure_tuple_format(data)
-        self.blocking = blocking
+        self.sync = sync
+        self.blocked = False
         self.type: ConnectionType = ConnectionType.DIRECT  # Default type
         self.source_methods: Tuple["DataMethod", ...]
         self.sink_methods: Tuple["DataMethod", ...]
@@ -90,18 +95,30 @@ class Connection:
             for sink_index, sink_method in enumerate(self.sink_methods):
                 sink_method.add_dependency(
                     source_method,
-                    merge_sink_index=(
-                        None if self.type is ConnectionType.DIRECT else source_index
+                    DependencyConfiguration(
+                        merge_sink_index=(
+                            None if self.type is ConnectionType.DIRECT else source_index
+                        ),
+                        blocking=self.sync,
                     ),
-                    blocking=self.blocking,
                 )
                 source_method.add_dependent(
                     sink_method,
-                    split_source_index=(
-                        None if self.type is ConnectionType.DIRECT else sink_index
+                    DependentConfiguration(
+                        split_source_index=(
+                            None if self.type is ConnectionType.DIRECT else sink_index
+                        ),
+                        blocking=self.sync,
                     ),
-                    blocking=self.blocking,
                 )
+
+    def block(self):
+        """Block the connection, preventing data from being sent."""
+        self.blocked = True
+        for source_method in self.source_methods:
+            for sink_method in self.sink_methods:
+                sink_method.dependency_to_configuration[source_method].active = False
+                source_method.dependent_to_configuration[sink_method].active = False
 
     def __hash__(self):
         return hash((self.source, self.sink, self.data))
@@ -117,5 +134,5 @@ class Connection:
     def __repr__(self):
         return (
             f"Connection(source={self.source}, sink={self.sink}, "
-            f"data={self.data}, blocking={self.blocking}"
+            f"data={self.data}, blocking={self.sync}"
         )

@@ -95,7 +95,7 @@ class Localization(Module):
             self,
             mapping_module.module,
             Mapping.MapRequest,
-            blocking=True,
+            sync=True,
         )
 
     @startup

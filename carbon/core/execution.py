@@ -163,18 +163,18 @@ class ExecutionGraph:
                     method_output = method.execute()
 
                     # Add the output to the input queue of the dependent methods
-                    for (
-                        dependent_method,
-                        configuration,
-                    ) in method.dependent_to_configuration.items():
+                    for dependent_method in method.dependents:
                         assert method_output is not None, (
                             f"Method {method.name} returned None, but it should return a valid output for its dependents."
                         )
+                        split_source_index = method.get_dependent_configuration(
+                            dependent_method
+                        ).split_source_index
                         dependent_method.receive_data(
                             method,
                             method_output
-                            if configuration.split_source_index is None
-                            else method_output[configuration.split_source_index],
+                            if split_source_index is None
+                            else method_output[split_source_index],
                         )
 
                         # If the dependent method is in the first layer and its process is not ready, mark it as ready

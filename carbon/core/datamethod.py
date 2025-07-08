@@ -25,6 +25,7 @@ class DependencyConfiguration:
 
     merge_sink_index: Optional[int]
     blocking: bool
+    active: bool = True  # Whether the dependency is active or not
 
 
 @dataclass
@@ -37,6 +38,7 @@ class DependentConfiguration:
 
     split_source_index: Optional[int]
     blocking: bool
+    active: bool = True  # Whether the dependent is active or not
 
 
 @dataclass
@@ -54,7 +56,6 @@ class SinkConfiguration:
 class DataMethod:
     def __init__(self, method: Callable):
         self.method = method
-        self.name: str = method.__name__
 
         self.sources = cast(
             Tuple[Type["Data"], ...], getattr(method, "_sources", tuple())
@@ -63,12 +64,13 @@ class DataMethod:
 
         self.sinks = cast(Tuple[Type["Data"], ...], getattr(method, "_sinks", tuple()))
         self.sink_indices: Tuple[int, ...] = tuple(range(len(self.sinks)))
+
         sink_configuration = cast(
             Dict[int, SinkConfiguration],
             getattr(method, "_sink_configuration", {}),
         )
 
-        self._input_queue: Dict[int, DataQueue] = {
+        self.input_queue: Dict[int, DataQueue] = {
             sink_index: DataQueue(
                 self.sinks[sink_index],
                 size=sink_configuration[sink_index].queue_size,
@@ -77,7 +79,7 @@ class DataMethod:
             for sink_index in self.sink_indices
         }
 
-        self._remaining_for_execution: Set[int] = set(
+        self.remaining_for_execution: Set[int] = set(
             self.sink_indices
         )  # Indices of sinks that are not ready for execution
 
@@ -91,29 +93,26 @@ class DataMethod:
 
         # TODO: Add a message cache and a message cache size for logging and transforms (historical transforms)
 
+    @property
+    def name(self) -> str:
+        """Get the name of the method."""
+        return self.method.__name__
+
     def add_dependency(
         self,
         dependency: "DataMethod",
-        merge_sink_index: Optional[int],
-        blocking: bool,
+        dependency_configuration: DependencyConfiguration,
     ) -> None:
         """Add a dependency to the method."""
-        self.dependency_to_configuration[dependency] = DependencyConfiguration(
-            merge_sink_index=merge_sink_index,
-            blocking=blocking,
-        )
+        self.dependency_to_configuration[dependency] = dependency_configuration
 
     def add_dependent(
         self,
         dependent: "DataMethod",
-        split_source_index: Optional[int],
-        blocking: bool,
+        dependency_configuration: DependentConfiguration,
     ) -> None:
         """Add a dependent to the method."""
-        self.dependent_to_configuration[dependent] = DependentConfiguration(
-            split_source_index=split_source_index,
-            blocking=blocking,
-        )
+        self.dependent_to_configuration[dependent] = dependency_configuration
 
     @property
     def dependencies(self) -> Set["DataMethod"]:
@@ -121,14 +120,44 @@ class DataMethod:
         return set(self.dependency_to_configuration.keys())
 
     @property
+    def active_dependencies(self) -> Set["DataMethod"]:
+        """Get the dependencies of the method."""
+        return set(
+            dependency
+            for dependency, configuration in self.dependency_to_configuration.items()
+            if configuration.active
+        )
+
+    @property
     def dependents(self) -> Set["DataMethod"]:
         """Get the dependents of the method."""
         return set(self.dependent_to_configuration.keys())
 
     @property
+    def active_dependents(self) -> Set["DataMethod"]:
+        """Get the dependents of the method."""
+        return set(
+            dependent
+            for dependent, configuration in self.dependent_to_configuration.items()
+            if configuration.active
+        )
+
+    def get_dependent_configuration(
+        self, dependent: "DataMethod"
+    ) -> DependentConfiguration:
+        """Get the configuration for a dependent."""
+        return self.dependent_to_configuration[dependent]
+
+    def get_dependency_configuration(
+        self, dependency: "DataMethod"
+    ) -> DependencyConfiguration:
+        """Get the configuration for a dependency."""
+        return self.dependency_to_configuration[dependency]
+
+    @property
     def is_ready_for_execution(self) -> bool:
         """Check if the method is ready for execution."""
-        return not self._remaining_for_execution
+        return not self.remaining_for_execution
 
     def pop_data_for_execution(self) -> List["Data"]:
         """Pop data from the input queue for execution."""
@@ -138,10 +167,10 @@ class DataMethod:
 
         data = []
         for sink_index in self.sink_indices:
-            data.append(self._input_queue[sink_index].pop())  # Memory is allocated
+            data.append(self.input_queue[sink_index].pop())  # Memory is allocated
 
-            if self._input_queue[sink_index].is_empty():
-                self._remaining_for_execution.add(sink_index)
+            if self.input_queue[sink_index].is_empty():
+                self.remaining_for_execution.add(sink_index)
         return data
 
     def receive_data(
@@ -155,17 +184,17 @@ class DataMethod:
 
             # If the dependency is a direct connection, add all data to the input queue
             for sink_index, item in zip(self.sink_indices, data):
-                self._input_queue[sink_index].append(item)
-                self._remaining_for_execution.discard(sink_index)
+                self.input_queue[sink_index].append(item)
+                self.remaining_for_execution.discard(sink_index)
         else:
             assert not isinstance(data, (list, tuple)) or len(data) == 1, (
                 "Expected data to be a singleton tuple or a Data instance"
             )
 
-            self._input_queue[merge_sink_index].append(
+            self.input_queue[merge_sink_index].append(
                 data[0] if isinstance(data, tuple) else data
             )
-            self._remaining_for_execution.discard(merge_sink_index)
+            self.remaining_for_execution.discard(merge_sink_index)
 
     def execute(self) -> Optional[Tuple[QueueItem, ...]]:
         """Execute the method and return the output."""

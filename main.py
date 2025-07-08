@@ -4,24 +4,27 @@ import tty
 from typing import Tuple
 
 from carbon import (
+    Autofill,
     ConfigurableSink,
     Data,
     ExecutionGraph,
     Module,
     ModuleReference,
+    safe_print,
     sink,
     source,
+)
+from carbon.transforms import (
+    ContinuousJoint,
+    CylindricalGeometry,
+    JointState,
+    Link,
 )
 
 
 class TeleopCommand(Data):
     left: float
     right: float
-
-
-class JointState(Data):
-    position: float
-    velocity: float
 
 
 class DifferentialDriveController(Module):
@@ -38,50 +41,18 @@ class DifferentialDriveController(Module):
                 self,
                 (left_motor.module, right_motor.module),
                 (JointState, JointState),
-                blocking=True,
+                sync=True,
             )
 
-    @sink(ConfigurableSink(TeleopCommand, sticky=False))
+    @sink(ConfigurableSink(TeleopCommand, sticky=False, queue_size=4))
     @source(JointState, JointState)
     def create_motor_commands(
         self, command: TeleopCommand
     ) -> Tuple[JointState, JointState]:
         safe_print(f"Creating motor commands from teleop command: {command}")
         return (
-            JointState(position=0.0, velocity=command.left),
-            JointState(position=0.0, velocity=command.right),
-        )
-
-
-class Transform(Data):
-    translation: Tuple[float, float, float]  # x, y, z
-    rotation: Tuple[float, float, float, float]  # quaternion (x, y, z, w)
-
-
-class ContinuousJoint(Module):
-    def __init__(self, parent: ModuleReference, child: ModuleReference):
-        super().__init__()
-        self.parent = parent
-        self.child = child
-
-        self.create_connection(
-            self,
-            child.module,
-            Transform,
-            blocking=True,
-        )
-
-    @sink(JointState)
-    @source(Transform)
-    def update_state(self, state: JointState) -> Transform:
-        return Transform(
-            translation=(0.0, 0.0, 0.0),  # Placeholder for translation
-            rotation=(
-                0.0,
-                0.0,
-                0.0,
-                1.0,
-            ),  # Placeholder for rotation (identity quaternion)
+            JointState(header=Autofill(), position=0.0, velocity=command.left),
+            JointState(header=Autofill(), position=0.0, velocity=command.right),
         )
 
 
@@ -90,42 +61,39 @@ class Motor(ContinuousJoint):
         super().__init__(parent, child)
 
 
-class Pose(Data):
-    position: Tuple[float, float, float]  # x, y, z
-    orientation: Tuple[float, float, float, float]  # quaternion (x, y, z, w)
-
-
-class Wheel(Module):
+class Wheel(Link):
     def __init__(self):
-        super().__init__()
-        self.pose = Pose(
-            position=(0.0, 0.0, 0.0),  # Placeholder for position
-            orientation=(
-                0.0,
-                0.0,
-                0.0,
-                1.0,
-            ),  # Placeholder for orientation (identity quaternion)
+        super().__init__(
+            CylindricalGeometry(
+                mass=1.0,  # Example mass for the wheel
+                radius=0.1,  # Example radius for the wheel
+                height=0.05,  # Example height for the wheel
+            )
         )
-
-    @sink(Transform)
-    def transform(self, transform: Transform):
-        safe_print(f"Transforming wheel with: {transform}")
-        # Here you would apply the transform to the wheel's pose
-        self.pose.position = transform.translation
-        self.pose.orientation = transform.rotation
 
 
 class WheelBase(Module):
     def __init__(self):
         super().__init__()
 
-        self.left_wheel = Wheel()
+        self.left_wheel = Link(
+            CylindricalGeometry(
+                mass=1.0,  # Example mass for the wheel
+                radius=0.1,  # Example radius for the wheel
+                height=0.05,  # Example height for the wheel
+            )
+        )
         self.left_motor = Motor(
             parent=self.as_reference(), child=self.left_wheel.as_reference()
         )
 
-        self.right_wheel = Wheel()
+        self.right_wheel = Link(
+            CylindricalGeometry(
+                mass=1.0,  # Example mass for the wheel
+                radius=0.1,  # Example radius for the wheel
+                height=0.05,  # Example height for the wheel
+            )
+        )
         self.right_motor = Motor(
             parent=self.as_reference(), child=self.right_wheel.as_reference()
         )
@@ -181,12 +149,6 @@ class Robot(Module):
         self.teleop = Teleop()
 
         self.create_connection(self.teleop, self.wheelbase.controller, TeleopCommand)
-
-
-# Helper function to always print at the start of a clean line
-def safe_print(*args, **kwargs):
-    print("\r\033[K", end="", flush=True)  # Move to start and clear line
-    print(*args, **kwargs)
 
 
 robot = Robot()

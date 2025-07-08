@@ -12,6 +12,7 @@ from typing import (
 
 from carbon.core.connection import Connection
 from carbon.core.datamethod import DataMethod, SinkConfiguration
+from carbon.core.utilities import is_equal_with_singleton
 from carbon.data import Data
 
 
@@ -110,6 +111,48 @@ class Module:
                 else:
                     raise ValueError(f"Multiple sinks defined for data type {datatype}")
 
+    def __setattr__(self, name, value):
+        if isinstance(value, Module):
+            self.add_modules([value])
+            super().__setattr__(name, value)
+        else:
+            super().__setattr__(name, value)
+
+    def _ensure_unique_connection(
+        self,
+        connection: "Connection",
+    ):
+        existing_connections = self.get_connections()
+        for existing_connection in existing_connections:
+            if existing_connection == connection:
+                raise ValueError(
+                    f"Connection already exists between {connection.source} and {connection.sink} for data {connection.data}"
+                )
+
+    def __repr__(self, memo=None):
+        if memo is None:
+            memo = set()
+
+        # Avoid infinite recursion by checking if the module is already visited
+        if self in memo:
+            return f"<{self.__class__.__name__} (circular reference)>"
+
+        memo.add(self)
+        child_lines = []
+
+        for module in self._modules:
+            # Get the string representation of the module
+            module_string = module.__repr__(memo)
+            module_string = _addindent(module_string, 2)
+            child_lines.append(module_string)
+
+        main_str = self.__class__.__name__ + "("
+        if child_lines:
+            main_str += "\n  " + "\n  ".join(child_lines) + "\n"
+
+        main_str += ")"
+        return main_str
+
     def as_reference(self) -> ModuleReference:
         """
         Return a reference to this module.
@@ -131,23 +174,7 @@ class Module:
             if mod not in self._modules:
                 self._modules.append(mod)
 
-    def __setattr__(self, name, value):
-        if isinstance(value, Module):
-            self.add_modules([value])
-            super().__setattr__(name, value)
-        else:
-            super().__setattr__(name, value)
-
-    def _ensure_unique_connection(
-        self,
-        connection: "Connection",
-    ):
-        existing_connections = self.get_connections()
-        for existing_connection in existing_connections:
-            if existing_connection == connection:
-                raise ValueError(
-                    f"Connection already exists between {connection.source} and {connection.sink} for data {connection.data}"
-                )
+        return self
 
     def get_connections(self, recursive: bool = True, _memo: Optional[Set] = None):
         if not recursive:
@@ -186,15 +213,16 @@ class Module:
         source: Union["Module", Sequence["Module"]],
         sink: Union["Module", Sequence["Module"]],
         data: Union[Type["Data"], Sequence[Type["Data"]]],
-        blocking: bool = False,
+        sync: bool = False,
     ):
         """
         Create a connection between source and sink modules for the specified data type.
         """
-        connection = Connection(source, sink, data, blocking=blocking)
+        connection = Connection(source, sink, data, sync=sync)
         self._ensure_unique_connection(connection)
         self._connections.add(connection)
-        return connection
+
+        return self
 
     def block_connection(
         self,
@@ -208,49 +236,32 @@ class Module:
         for existing_connection in self.get_connections():
             removal = False
 
-            if source is None and sink is None and existing_connection.data == data:
+            if (
+                source is None
+                and sink is None
+                and is_equal_with_singleton(existing_connection.data, data)
+            ):
                 removal = True
             elif (
                 source is None
-                and existing_connection.sink == sink
-                and existing_connection.data == data
+                and is_equal_with_singleton(existing_connection.sink, sink)
+                and is_equal_with_singleton(existing_connection.data, data)
             ):
                 removal = True
             elif (
-                existing_connection.source == source
+                is_equal_with_singleton(existing_connection.source, source)
                 and sink is None
-                and existing_connection.data == data
+                and is_equal_with_singleton(existing_connection.data, data)
             ):
                 removal = True
             elif (
-                existing_connection.source == source
-                and existing_connection.sink == sink
-                and existing_connection.data == data
+                is_equal_with_singleton(existing_connection.source, source)
+                and is_equal_with_singleton(existing_connection.sink, sink)
+                and is_equal_with_singleton(existing_connection.data, data)
             ):
                 removal = True
             if removal:
+                existing_connection.block()
                 self._blocked_connections.add(existing_connection)
 
-    def __repr__(self, memo=None):
-        if memo is None:
-            memo = set()
-
-        # Avoid infinite recursion by checking if the module is already visited
-        if self in memo:
-            return f"<{self.__class__.__name__} (circular reference)>"
-
-        memo.add(self)
-        child_lines = []
-
-        for module in self._modules:
-            # Get the string representation of the module
-            module_string = module.__repr__(memo)
-            module_string = _addindent(module_string, 2)
-            child_lines.append(module_string)
-
-        main_str = self.__class__.__name__ + "("
-        if child_lines:
-            main_str += "\n  " + "\n  ".join(child_lines) + "\n"
-
-        main_str += ")"
-        return main_str
+        return self

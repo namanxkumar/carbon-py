@@ -1,20 +1,21 @@
 from typing import Sequence, Tuple, TypeVar, Union
 
-# def is_equal_with_singleton(
-#     a: object | Sequence[object], b: object | Sequence[object]
-# ) -> bool:
-#     """
-#     Check equality between two objects or sequences.
-#     Normalizes to lists to handle tuple/list comparison.
-#     """
 
-#     def is_sequence(obj):
-#         return isinstance(obj, (list, tuple))
+def is_equal_with_singleton(
+    a: object | Sequence[object], b: object | Sequence[object]
+) -> bool:
+    """
+    Check equality between two objects or sequences.
+    Normalizes to lists to handle tuple/list comparison.
+    """
 
-#     a_norm = list(a) if is_sequence(a) else [a]  # type: ignore
-#     b_norm = list(b) if is_sequence(b) else [b]  # type: ignore
+    def is_sequence(obj):
+        return isinstance(obj, (list, tuple))
 
-#     return a_norm == b_norm
+    a_norm = list(a) if is_sequence(a) else [a]  # type: ignore
+    b_norm = list(b) if is_sequence(b) else [b]  # type: ignore
+
+    return a_norm == b_norm
 
 
 T = TypeVar("T")
@@ -29,3 +30,9 @@ def ensure_tuple_format(data: Union[T, Sequence[T]]) -> Union[Tuple[T], Tuple[T,
     if isinstance(data, Sequence):
         return tuple(data)
     return (data,)
+
+
+# Helper function to always print at the start of a clean line
+def safe_print(*args, **kwargs):
+    print("\r\033[K", end="", flush=True)  # Move to start and clear line
+    print(*args, **kwargs)

@@ -3,6 +3,7 @@ from carbon.core import (
     ExecutionGraph,
     Module,
     ModuleReference,
+    safe_print,
     sink,
     source,
 )
