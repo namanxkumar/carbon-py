@@ -216,7 +216,7 @@ class DataMethod:
 
             # If the dependency is a direct connection, add all data to the input queue
             for sink_index, item in zip(self.sink_indices, data):
-                self.input_queue[sink_index].append(item)
+                self.input_queue[sink_index].append(item, sync=configuration.sync)
                 self.remaining_for_execution.discard(sink_index)
         else:
             assert not isinstance(data, (list, tuple)) or len(data) == 1, (
@@ -224,7 +224,7 @@ class DataMethod:
             )
 
             self.input_queue[configuration.merge_sink_index].append(
-                data[0] if isinstance(data, tuple) else data
+                data[0] if isinstance(data, tuple) else data, sync=configuration.sync
             )
             self.remaining_for_execution.discard(configuration.merge_sink_index)
 

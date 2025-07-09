@@ -158,6 +158,7 @@ class ExecutionGraph:
                             self.process_exited_manually[process_index] = False
                             return
                         continue
+
                     # If there are data to process, execute the method
                     method_output = method.execute()
 
@@ -186,6 +187,10 @@ class ExecutionGraph:
                             self.process_readiness[
                                 self.process_mapping[dependent_method]
                             ] = True
+
+                    if method.is_ready_for_execution and method.sinks:
+                        # If the method is ready for execution and has sinks, it can be executed again
+                        remaining_methods.append(method)
             # break
 
     def _monitor_processes(self):

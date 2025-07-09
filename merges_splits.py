@@ -1,6 +1,6 @@
 from typing import Tuple
 
-from carbon.core import ExecutionGraph, Module, sink, source
+from carbon.core import ConfigurableSink, ExecutionGraph, Module, sink, source
 from carbon.data import Data
 
 
@@ -73,7 +73,7 @@ class ModuleE(Module):
     def __init__(self):
         super().__init__()
 
-    @sink(DataA, DataB)
+    @sink(ConfigurableSink(DataA, sticky=True), ConfigurableSink(DataB, sticky=True))
     def method_e(self, data: DataA, data2: DataB) -> None:
         print(f"ModuleE received DataA: {data.a} and DataB: {data2.a}")
 

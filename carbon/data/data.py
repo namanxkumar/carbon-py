@@ -236,16 +236,19 @@ class DataQueue:
         self.sticky = sticky
         self.data_type = data_type
         self.arrow_table = pa.Table.from_pylist([], schema=data_type._get_schema())
+        self.num_sync_items = 0
 
     def _append_table(self, table: pa.Table) -> None:
-        if self.arrow_table.num_rows >= self.size:
+        if self.arrow_table.num_rows >= (self.size + self.num_sync_items):
             table_to_merge = self.arrow_table.slice(1)
         else:
             table_to_merge = self.arrow_table
 
         self.arrow_table = pa.concat_tables([table_to_merge, table])
 
-    def append(self, item: QueueItem) -> None:
+    def append(self, item: QueueItem, sync: bool = False) -> None:
+        if sync:
+            self.num_sync_items += 1
         if isinstance(item, pa.Table):
             self._append_table(item)
         else:
@@ -268,6 +271,8 @@ class DataQueue:
         return table
 
     def pop(self) -> Data:
+        if self.num_sync_items > 0:
+            self.num_sync_items -= 1
         return self.data_type._from_arrow(self._pop_table())
 
     def is_empty(self) -> bool:
