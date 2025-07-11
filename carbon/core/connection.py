@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Dict, Protocol, Sequence, Tuple, Type, Union
+from typing import Sequence, Type, Union
 
 from carbon.core.datamethod import (
     DataMethod,
@@ -16,16 +16,11 @@ class ConnectionType(Enum):
     DIRECT = "direct"
 
 
-class ModuleLike(Protocol):
-    _sources: Dict[Tuple[Type["Data"], ...], "DataMethod"]
-    _sinks: Dict[Tuple[Type["Data"], ...], "DataMethod"]
-
-
 class Connection:
     def __init__(
         self,
-        source: Union["ModuleLike", Sequence["ModuleLike"]],
-        sink: Union["ModuleLike", Sequence["ModuleLike"]],
+        source: Union[DataMethod, Sequence[DataMethod]],
+        sink: Union[DataMethod, Sequence[DataMethod]],
         data: Union[Type["Data"], Sequence[Type["Data"]]],
         sync: bool = False,
     ):
@@ -43,8 +38,6 @@ class Connection:
         self.sync = sync
         self.active = True
         self.type: ConnectionType = ConnectionType.DIRECT  # Default type
-        self.source_methods: Tuple["DataMethod", ...]
-        self.sink_methods: Tuple["DataMethod", ...]
 
         if len(self.source) > 1 and len(self.source) != len(self.data):
             raise ValueError(
@@ -56,43 +49,11 @@ class Connection:
             )
 
         if len(self.source) > 1:
-            for src, dat in zip(self.source, self.data):
-                assert ensure_tuple_format(dat) in src._sources, (
-                    f"Source {src} must have data type {dat} defined in its sources."
-                )
-            self.source_methods = tuple(
-                [
-                    src._sources[ensure_tuple_format(dat)]
-                    for src, dat in zip(self.source, self.data)
-                ]
-            )
             self.type = ConnectionType.MERGE
-        elif len(self.source) == 1:
-            assert self.data in self.source[0]._sources, (
-                f"Source {self.source[0]} must have data type {self.data[0]} defined in its sources."
-            )
-            self.source_methods = tuple([self.source[0]._sources[self.data]])
-
         if len(self.sink) > 1:
-            for snk, dat in zip(self.sink, self.data):
-                assert ensure_tuple_format(dat) in snk._sinks, (
-                    f"Sink {snk} must have data type {dat} defined in its sinks."
-                )
-            self.sink_methods = tuple(
-                [
-                    snk._sinks[ensure_tuple_format(dat)]
-                    for snk, dat in zip(self.sink, self.data)
-                ]
-            )
             self.type = ConnectionType.SPLIT
-        elif len(self.sink) == 1:
-            assert self.data in self.sink[0]._sinks, (
-                f"Sink {self.sink[0]} must have data type {self.data[0]} defined in its sinks."
-            )
-            self.sink_methods = tuple([self.sink[0]._sinks[self.data]])
-
-        for source_index, source_method in enumerate(self.source_methods):
-            for sink_index, sink_method in enumerate(self.sink_methods):
+        for source_index, source_method in enumerate(self.source):
+            for sink_index, sink_method in enumerate(self.sink):
                 sink_method.add_dependency(
                     source_method,
                     DependencyConfiguration(
@@ -115,8 +76,8 @@ class Connection:
     def block(self):
         """Block the connection, preventing data from being sent."""
         self.active = False
-        for source_method in self.source_methods:
-            for sink_method in self.sink_methods:
+        for source_method in self.source:
+            for sink_method in self.sink:
                 sink_method.block_dependency(source_method)
                 source_method.block_dependent(sink_method)
 

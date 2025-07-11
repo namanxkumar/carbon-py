@@ -8,7 +8,6 @@ from typing import (
     Tuple,
     Type,
     Union,
-    cast,
 )
 
 from carbon.core.utilities import ensure_tuple_format
@@ -54,27 +53,42 @@ class SinkConfiguration:
 
 
 class DataMethod:
-    def __init__(self, method: Callable):
+    def __init__(
+        self,
+        method: Callable,
+        produces: Optional[Union[Type[Data], Tuple[Type[Data], ...]]],
+        consumes: Optional[Union[Type[Data], Tuple[Type[Data], ...]]],
+        sink_configuration: Optional[Tuple[SinkConfiguration, ...]] = None,
+    ):
         self.method = method
 
-        self.sources = cast(
-            Tuple[Type["Data"], ...], getattr(method, "_sources", tuple())
+        assert produces or consumes, (
+            "DataMethod must have at least one of produces or consumes defined."
         )
+
+        self.sources = ensure_tuple_format(produces) if produces else tuple()
         self.source_indices: Tuple[int, ...] = tuple(range(len(self.sources)))
 
-        self.sinks = cast(Tuple[Type["Data"], ...], getattr(method, "_sinks", tuple()))
+        self.sinks = ensure_tuple_format(consumes) if consumes else tuple()
         self.sink_indices: Tuple[int, ...] = tuple(range(len(self.sinks)))
-
-        sink_configuration = cast(
-            Dict[int, SinkConfiguration],
-            getattr(method, "_sink_configuration", {}),
+        if consumes:
+            assert sink_configuration is not None, (
+                "Sink configuration must be provided if consumes is defined."
+            )
+        sink_configuration_dict: Dict[int, SinkConfiguration] = (
+            {
+                sink_index: sink_configuration[sink_index]
+                for sink_index in self.sink_indices
+            }
+            if sink_configuration
+            else {}
         )
 
         self.input_queue: Dict[int, DataQueue] = {
             sink_index: DataQueue(
                 self.sinks[sink_index],
-                size=sink_configuration[sink_index].queue_size,
-                sticky=sink_configuration[sink_index].sticky,
+                size=sink_configuration_dict[sink_index].queue_size,
+                sticky=sink_configuration_dict[sink_index].sticky,
             )
             for sink_index in self.sink_indices
         }
@@ -196,7 +210,7 @@ class DataMethod:
             "Method is not ready for execution. Ensure all required data is available."
         )
 
-        data = []
+        data: List[Data] = []
         for sink_index in self.sink_indices:
             data.append(self.input_queue[sink_index].pop())  # Memory is allocated
 

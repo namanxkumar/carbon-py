@@ -73,7 +73,7 @@ class ModuleE(Module):
     def __init__(self):
         super().__init__()
 
-    @sink(ConfigurableSink(DataA, sticky=True), ConfigurableSink(DataB, sticky=True))
+    @sink(ConfigurableSink(DataA), ConfigurableSink(DataB))
     def method_e(self, data: DataA, data2: DataB) -> None:
         print(f"ModuleE received DataA: {data.a} and DataB: {data2.a}")
 
