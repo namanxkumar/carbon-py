@@ -131,7 +131,7 @@ class Module:
                     f"Connection already exists between {connection.producer} and {connection.consumer} for data {connection.data}"
                 )
 
-    def __repr__(self, memo=None):
+    def __repr__(self, memo=None, detail: bool = False) -> str:
         if memo is None:
             memo = set()
 
@@ -144,16 +144,30 @@ class Module:
 
         for module in self._modules:
             # Get the string representation of the module
-            module_string = module.__repr__(memo)
+            module_string = module.__repr__(memo, detail=detail)
             module_string = _addindent(module_string, 2)
             child_lines.append(module_string)
 
         main_str = self.__class__.__name__ + "("
         if child_lines:
             main_str += "\n  " + "\n  ".join(child_lines) + "\n"
-
+        if self._consumers and detail:
+            consumers_str = "\n    ".join(
+                f"{key[0] if len(key) == 1 else key}" for key in self._consumers.keys()
+            )
+            consumers_str = f"\n    {consumers_str}"
+            main_str += f"\n  consumers: {consumers_str}\n"
+        if self._producers and detail:
+            producers_str = "\n    ".join(
+                f"{key[0] if len(key) == 1 else key}" for key in self._producers.keys()
+            )
+            producers_str = f"\n    {producers_str}"
+            main_str += f"\n  producers: {producers_str}\n"
         main_str += ")"
         return main_str
+
+    def get_description(self) -> str:
+        return self.__repr__(detail=True)
 
     def as_reference(self) -> ModuleReference:
         """

@@ -20,7 +20,7 @@ robot = Robot()
 execution_graph = ExecutionGraph(robot)
 
 
-print(robot)
+print(robot.get_description())
 print("\nExecution Graph Layers:")
 print(execution_graph.layers)
 print("\nProcess Groups:")
