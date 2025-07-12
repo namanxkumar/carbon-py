@@ -1,17 +1,8 @@
 from abc import ABC, abstractmethod
 
+from carbon.common_data_types import Position
 from carbon.core import Module, ModuleReference, consumer, producer
 from carbon.data import Autofill, StampedData
-
-
-class JointState(StampedData):
-    """
-    Represents the state of a joint, including position and velocity.
-    This class is used to encapsulate the state information for joints in a robotic system.
-    """
-
-    position: float  # Position of the joint
-    velocity: float  # Velocity of the joint
 
 
 class Transform(StampedData):
@@ -49,7 +40,7 @@ class Joint(Module, ABC):
         )
 
     @abstractmethod
-    @consumer(JointState)
+    @consumer(Position)
     @producer(Transform)
     def update_state(self, state) -> Transform:
         """
@@ -63,14 +54,15 @@ class ContinuousJoint(Joint):
     def __init__(self, parent: ModuleReference, child: ModuleReference):
         super().__init__(parent, child)
 
-    @consumer(JointState)
+    @consumer(Position)
     @producer(Transform)
-    def update_state(self, state: JointState) -> Transform:
+    def update_state(self, state: Position) -> Transform:
         """
         Update the joint state and return the corresponding transform.
         """
+        print("Updating child links")
         self._transform.translation = (
-            state.position,  # Assuming position is a float representing the joint's position
+            state.position.x,  # Assuming position is a float representing the joint's position
             0.0,  # Placeholder for y translation
             0.0,  # Placeholder for z translation
         )

@@ -1,4 +1,5 @@
 from carbon import Module
+from carbon.common_data_types import Position
 from carbon.transforms import ContinuousJoint, CylindricalGeometry, Link
 from examples.wheelbase.differential_drive_controller import DifferentialDriveController
 
@@ -31,8 +32,7 @@ class WheelBase(Module):
 
         # self.block_connection(producer=None, consumer=None, data=Transform)
 
-        self.controller = DifferentialDriveController(
-            left_motor=self.left_motor.as_reference(),
-            right_motor=self.right_motor.as_reference(),
-            update_motor_states=True,
+        self.controller = DifferentialDriveController(open_loop=True)
+        self.create_connection(
+            (Position, Position), self.controller, (self.left_motor, self.right_motor)
         )

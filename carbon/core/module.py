@@ -8,11 +8,12 @@ from typing import (
     Tuple,
     Type,
     Union,
+    cast,
 )
 
 from carbon.core.connection import Connection
 from carbon.core.datamethod import ConsumerConfiguration, DataMethod
-from carbon.core.utilities import is_equal_with_singleton
+from carbon.core.utilities import ensure_tuple_format, is_equal_with_singleton
 from carbon.data import Data
 
 
@@ -45,12 +46,12 @@ def consumer(*consumers: Union[Type["Data"], ConfiguredType]):
         setattr(
             func,
             "_consumer_configuration",
-            {
-                consumer_index: consumer.configuration
+            tuple(
+                consumer.configuration
                 if isinstance(consumer, ConfiguredType)
                 else ConsumerConfiguration()
-                for consumer_index, consumer in enumerate(consumers)
-            },
+                for consumer in consumers
+            ),
         )
         return func
 
@@ -230,6 +231,68 @@ class Module:
                 methods.update(module.get_methods(recursive, active_only, _memo))
 
         return methods
+
+    def add_method(
+        self,
+        method: Callable,
+        consumes: Optional[Union[Type["Data"], Tuple[Type["Data"], ...]]] = None,
+        produces: Optional[Union[Type["Data"], Tuple[Type["Data"], ...]]] = None,
+    ):
+        """
+        Add a producer for the specified data type.
+        """
+        assert callable(method), "Method must be callable"
+        assert produces or consumes, (
+            "At least one of produces or consumes must be specified"
+        )
+        assert not hasattr(method, "_producers") and not hasattr(
+            method, "_consumers"
+        ), "Method already has producers or consumers defined"
+        if produces is not None:
+            produces = ensure_tuple_format(produces)
+        else:
+            produces = tuple()
+
+        if consumes is not None:
+            consumes = ensure_tuple_format(consumes)
+            consumes = tuple(
+                consumer.type if isinstance(consumer, ConfiguredType) else consumer
+                for consumer in consumes
+            )
+            consumer_configuration = tuple(
+                consumer.configuration
+                if isinstance(consumer, ConfiguredType)
+                else ConsumerConfiguration()
+                for consumer in consumes
+            )
+        else:
+            consumes = tuple()
+            consumer_configuration = tuple()
+
+        data_method = DataMethod(
+            method,
+            produces=produces,
+            consumes=consumes,
+            consumer_configuration=cast(
+                Tuple[ConsumerConfiguration, ...], consumer_configuration
+            ),
+        )
+
+        if produces:
+            if self._producers.get(produces) is None:
+                self._producers[produces] = data_method
+                self._methods.add(data_method)
+            else:
+                raise ValueError(f"Multiple producers defined for data type {produces}")
+
+        if consumes:
+            if self._consumers.get(consumes) is None:
+                self._consumers[consumes] = data_method
+                self._methods.add(data_method)
+            else:
+                raise ValueError(f"Multiple consumers defined for data type {consumes}")
+
+        return self
 
     def create_connection(
         self,

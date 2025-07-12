@@ -2,7 +2,8 @@ from carbon import (
     ExecutionGraph,
     Module,
 )
-from examples.wheelbase.teleop import Teleop, TeleopCommand
+from carbon.common_data_types import Twist
+from examples.wheelbase.teleop import Teleop
 from examples.wheelbase.wheelbase import WheelBase
 
 
@@ -12,7 +13,7 @@ class Robot(Module):
         self.wheelbase = WheelBase()
         self.teleop = Teleop()
 
-        self.create_connection(TeleopCommand, self.teleop, self.wheelbase.controller)
+        self.create_connection(Twist, self.teleop, self.wheelbase.controller)
 
 
 robot = Robot()

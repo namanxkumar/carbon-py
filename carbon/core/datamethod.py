@@ -54,22 +54,36 @@ class ConsumerConfiguration:
 
 
 class DataMethod:
-    def __init__(self, method: Callable):
+    def __init__(
+        self,
+        method: Callable,
+        produces: Optional[Tuple[Type["Data"], ...]] = None,
+        consumes: Optional[Tuple[Type["Data"], ...]] = None,
+        consumer_configuration: Optional[Tuple[ConsumerConfiguration, ...]] = None,
+    ):
         self.method = method
 
-        self.producers = cast(
-            Tuple[Type["Data"], ...], getattr(method, "_producers", tuple())
+        self.producers = (
+            cast(Tuple[Type["Data"], ...], getattr(method, "_producers", tuple()))
+            if produces is None
+            else produces
         )
         self.producer_indices: Tuple[int, ...] = tuple(range(len(self.producers)))
 
-        self.consumers = cast(
-            Tuple[Type["Data"], ...], getattr(method, "_consumers", tuple())
+        self.consumers = (
+            cast(Tuple[Type["Data"], ...], getattr(method, "_consumers", tuple()))
+            if consumes is None
+            else consumes
         )
         self.consumer_indices: Tuple[int, ...] = tuple(range(len(self.consumers)))
 
-        consumer_configuration = cast(
-            Dict[int, ConsumerConfiguration],
-            getattr(method, "_consumer_configuration", {}),
+        consumer_configuration = (
+            cast(
+                Tuple[ConsumerConfiguration, ...],
+                getattr(method, "_consumer_configuration", ()),
+            )
+            if consumer_configuration is None
+            else consumer_configuration
         )
 
         self.input_queue: Dict[int, DataQueue] = {
