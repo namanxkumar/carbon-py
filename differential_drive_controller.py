@@ -1,7 +1,16 @@
 from typing import Optional, Tuple
 
-from carbon import Autofill, ConfigurableSink, Module, safe_print, sink, source
 from carbon.common_data_types import Position, Twist, Vector3, Velocity
+from carbon.core import (
+    ConfiguredSink,
+    Module,
+    Sink,
+    Source,
+    consumer,
+    producer,
+    safe_print,
+)
+from carbon.data import Autofill
 
 
 class DifferentialDriveController(Module):
@@ -13,16 +22,17 @@ class DifferentialDriveController(Module):
     In closed-loop mode, it receives positions from the motors.
     """
 
+    drive_command = Sink(ConfiguredSink(Twist, queue_size=4))
+    motor_commands = Source(Velocity, Velocity)
+    motor_commands_for_joint_calculation = Sink(Velocity, Velocity)
+    joint_state = Source(Position, Position)
+
     def __init__(
         self,
-        create_joint_positions: bool = True,
         wheel_separation: float = 0.5,
         wheel_radius: float = 0.1,
     ):
         super().__init__()
-
-        if create_joint_positions:
-            self.create_connection((Velocity, Velocity), self, self, sync=True)
 
         self.wheel_separation = wheel_separation
         self.wheel_radius = wheel_radius
@@ -31,8 +41,12 @@ class DifferentialDriveController(Module):
         self._previous_positions: Optional[Tuple[Vector3, Vector3]] = None
         self._previous_heading: Optional[float] = None
 
-    @sink(ConfigurableSink(Twist, sticky=False, queue_size=4))
-    @source(Velocity, Velocity)
+        self.create_connection(
+            self.motor_commands, self.motor_commands_for_joint_calculation, sync=True
+        )
+
+    @consumer(drive_command)
+    @producer(motor_commands)
     def convert_motor_commands(self, twist_command: Twist) -> Tuple[Velocity, Velocity]:
         safe_print(f"Creating motor commands from teleop command: {twist_command}")
         # Convert the Twist command to velocity commands for the motors
@@ -50,8 +64,8 @@ class DifferentialDriveController(Module):
             ),
         )
 
-    @sink(Velocity, Velocity)
-    @source(Position, Position)
+    @consumer(motor_commands_for_joint_calculation)
+    @producer(joint_state)
     def update_joint_positions(
         self, left_velocity: Velocity, right_velocity: Velocity
     ) -> Tuple[Position, Position]:

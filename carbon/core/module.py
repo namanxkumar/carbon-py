@@ -1,12 +1,13 @@
 from typing import (
-    Any,
     Callable,
     Dict,
+    Generic,
     List,
     Optional,
     Sequence,
     Set,
     Type,
+    TypeVar,
     Union,
     cast,
     overload,
@@ -14,25 +15,21 @@ from typing import (
 
 from carbon.core.connection import Connection
 from carbon.core.datamethod import DataMethod
-from carbon.core.sources_sinks import D, Sink, Source
+from carbon.core.sources_sinks import Sink, Source
 from carbon.core.utilities import ensure_tuple_format, is_equal_with_singleton
 from carbon.data import Data
 
 
-def producer(source: Source[D]):
-    def decorator(func: Callable[..., D]):
+def producer(source: Source):
+    def decorator(func: Callable):
         func.produces = source
         return func
 
     return decorator
 
 
-def consumer(sink: Sink[D]):
-    @overload
-    def decorator(func: Callable[[Any, D], Any]): ...
-    @overload
-    def decorator(func: Callable[[D], Any]): ...
-    def decorator(func):
+def consumer(sink: Sink):
+    def decorator(func: Callable):
         func.consumes = sink
         return func
 
@@ -51,8 +48,11 @@ def _addindent(s_: str, numSpaces: int):
     return s
 
 
-class ModuleReference:
-    def __init__(self, module: "Module"):
+T = TypeVar("T", bound="Module")
+
+
+class ModuleReference(Generic[T]):
+    def __init__(self, module: T):
         self.module = module
 
 
@@ -71,7 +71,6 @@ class Module:
         for attribute_name in dir(self):
             attribute = getattr(self, attribute_name)
             if isinstance(attribute, Source):
-                print(attribute)
                 if attribute in sources_to_add:
                     raise ValueError(
                         f"Multiple sources defined for data type {attribute.data_types}"
@@ -120,6 +119,7 @@ class Module:
                 sink.data_method = data_method
                 self._sinks[sink] = data_method
             self._methods.add(data_method)
+
         if sources_to_add.difference(set(self._sources.keys())):
             print(sources_to_add, self._sources.keys())
             raise ValueError(
@@ -130,6 +130,10 @@ class Module:
             raise ValueError(
                 f"Sinks {sinks_to_add.union(set(self._sinks.keys()))} do not have methods defined in the module {self.__class__.__name__}"
             )
+
+        print(
+            f"Module {self.__class__.__name__} initialized with sources: {self._sources} and sinks: {self._sinks}"
+        )
 
     def __setattr__(self, name, value):
         if isinstance(value, Module):
@@ -173,7 +177,7 @@ class Module:
         main_str += ")"
         return main_str
 
-    def as_reference(self) -> ModuleReference:
+    def as_reference(self):
         """
         Return a reference to this module.
         """
@@ -250,11 +254,39 @@ class Module:
 
         return methods
 
+    # @overload
+    # def create_connection(
+    #     self,
+    #     source: Source[Unpack[T]],
+    #     sink: Sink[Unpack[T]],
+    #     sync: bool = False,
+    # ): ...
+    @overload
     def create_connection(
         self,
-        source: Union[Source, Sequence[Source]],
-        sink: Union[Sink, Sequence[Sink]],
+        source: Source,
+        sink: Sink,
         sync: bool = False,
+    ): ...
+    @overload
+    def create_connection(
+        self,
+        source: Sequence[Source],
+        sink: Sink,
+        sync: bool = False,
+    ): ...
+    @overload
+    def create_connection(
+        self,
+        source: Source,
+        sink: Sequence[Sink],
+        sync: bool = False,
+    ): ...
+    def create_connection(
+        self,
+        source,
+        sink,
+        sync=False,
     ):
         """
         Create a connection between source and sink modules for the specified data type.
@@ -263,20 +295,20 @@ class Module:
             source_types = ensure_tuple_format(source.data_types)
         else:
             source_types = ensure_tuple_format(
-                [src.data_types for src in cast(Sequence[Source], source)]
+                [src.data_types[0] for src in cast(Sequence[Source], source)]
             )
         if isinstance(sink, Sink):
             sink_types = ensure_tuple_format(sink.data_types)
         else:
             sink_types = ensure_tuple_format(
-                [snk.data_types for snk in cast(Sequence[Sink], sink)]
+                [snk.data_types[0] for snk in cast(Sequence[Sink], sink)]
             )
         if not is_equal_with_singleton(source_types, sink_types):
             raise ValueError(
                 f"Source data types {source_types} do not match sink data types {sink_types}"
             )
         source_data_methods = (
-            ensure_tuple_format(
+            tuple(
                 [
                     cast(DataMethod, src.data_method)
                     for src in cast(Sequence[Source], source)
@@ -286,7 +318,7 @@ class Module:
             else ensure_tuple_format(cast(DataMethod, source.data_method))
         )
         sink_data_methods = (
-            ensure_tuple_format(
+            tuple(
                 [
                     cast(DataMethod, snk.data_method)
                     for snk in cast(Sequence[Sink], sink)

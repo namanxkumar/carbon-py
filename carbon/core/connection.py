@@ -52,6 +52,7 @@ class Connection:
             self.type = ConnectionType.MERGE
         if len(self.sink) > 1:
             self.type = ConnectionType.SPLIT
+
         for source_index, source_method in enumerate(self.source):
             for sink_index, sink_method in enumerate(self.sink):
                 sink_method.add_dependency(

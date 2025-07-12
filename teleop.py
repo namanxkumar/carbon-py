@@ -2,16 +2,18 @@ import sys
 import termios
 import tty
 
-from carbon import Module, source
 from carbon.common_data_types import Twist, Vector3
+from carbon.core import Module, Source, producer
 
 
 class Teleop(Module):
+    teleop_command = Source(Twist)
+
     def __init__(self):
         super().__init__()
 
-    @source(Twist)
-    def teleop_command(self) -> Twist:
+    @producer(teleop_command)
+    def create_teleop_command(self) -> Twist:
         print("Running Teleop (press 'q' to exit, use wasd for control)")
 
         def read_wasd_key():

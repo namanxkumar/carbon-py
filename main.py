@@ -1,16 +1,11 @@
-from carbon import (
+from carbon.core import (
     ExecutionGraph,
     Module,
 )
-from carbon.common_data_types import Position, Twist
-from carbon.transforms import (
-    ContinuousJoint,
-    CylindricalGeometry,
-    Link,
-)
-from examples.wheelbase.differential_drive_controller import DifferentialDriveController
-from examples.wheelbase.kangaroo_driver import KangarooDriver
-from examples.wheelbase.teleop import Teleop
+from carbon.transforms import ContinuousJoint, CylindricalGeometry, Link
+from differential_drive_controller import DifferentialDriveController
+from kangaroo_driver import KangarooDriver
+from teleop import Teleop
 
 
 class WheelBase(Module):
@@ -24,9 +19,7 @@ class WheelBase(Module):
                 height=0.05,  # Example height for the wheel
             )
         )
-        self.left_motor = ContinuousJoint(
-            parent=self.as_reference(), child=self.left_wheel.as_reference()
-        )
+        self.left_motor = ContinuousJoint(child=self.left_wheel.as_reference())
 
         self.right_wheel = Link(
             CylindricalGeometry(
@@ -35,27 +28,22 @@ class WheelBase(Module):
                 height=0.05,  # Example height for the wheel
             )
         )
-        self.right_motor = ContinuousJoint(
-            parent=self.as_reference(), child=self.right_wheel.as_reference()
-        )
+        self.right_motor = ContinuousJoint(child=self.right_wheel.as_reference())
 
         self.driver = KangarooDriver()
         self.controller = DifferentialDriveController()
 
-        if self.driver.encoder_is_available:
-            self.create_connection(
-                (Position, Position),
-                self.driver,
-                (self.left_motor, self.right_motor),
-                sync=True,
-            )
-        else:
-            self.create_connection(
-                (Position, Position),
-                self.controller,
-                (self.left_motor, self.right_motor),
-                sync=True,
-            )
+        self.create_connection(
+            source=self.controller.motor_commands,
+            sink=self.driver.motor_commands,
+            sync=True,
+        )
+
+        self.create_connection(
+            self.controller.joint_state,
+            (self.left_motor.joint_state, self.right_motor.joint_state),
+            sync=True,
+        )
 
 
 class Robot(Module):
@@ -64,11 +52,17 @@ class Robot(Module):
         self.wheelbase = WheelBase()
         self.teleop = Teleop()
 
-        self.create_connection(Twist, self.teleop, self.wheelbase.controller)
+        self.create_connection(
+            self.teleop.teleop_command, self.wheelbase.controller.drive_command
+        )
 
 
 robot = Robot()
 print(robot)
+print(robot.get_methods())
+print("\nConnections:")
+for connection in robot.get_connections():
+    print(connection)
 execution_graph = ExecutionGraph(robot)
 print("\nExecution Graph Layers:")
 print(execution_graph.layers)
@@ -79,9 +73,6 @@ for process_index, process in execution_graph.processes.items():
         print(
             f"  {method.name} (depends on: {method.dependencies}, produces: {method.dependents})"
         )
-print("\nConnections:")
-for connection in robot.get_connections():
-    print(connection)
 print("\nMethods:")
 for method in robot.get_methods():
     print(method.name)

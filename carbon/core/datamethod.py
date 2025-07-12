@@ -2,11 +2,13 @@ from dataclasses import dataclass
 from typing import (
     Callable,
     Dict,
+    Generic,
     List,
     Optional,
     Set,
     Tuple,
     Type,
+    TypeVar,
     Union,
 )
 
@@ -50,6 +52,22 @@ class SinkConfiguration:
 
     queue_size: int = 1
     sticky: bool = False
+
+
+D = TypeVar("D", bound=Type[Data])
+
+
+class ConfiguredSink(Generic[D]):
+    """
+    A sink that is configured with a specific data type and configuration.
+    This is used to ensure that the sink can handle the data type correctly.
+    """
+
+    def __init__(self, data_type: D, queue_size: int = 1, sticky: bool = False):
+        if not isinstance(data_type, Type) or not issubclass(data_type, Data):
+            raise ValueError(f"Type {data_type} is not a valid Data type.")
+        self.data_type = data_type
+        self.configuration = SinkConfiguration(queue_size=queue_size, sticky=sticky)
 
 
 class DataMethod:
@@ -134,10 +152,10 @@ class DataMethod:
     def add_dependent(
         self,
         dependent: "DataMethod",
-        dependency_configuration: DependentConfiguration,
+        dependent_configuration: DependentConfiguration,
     ) -> None:
         """Add a dependent to the method."""
-        self._dependent_to_configuration[dependent] = dependency_configuration
+        self._dependent_to_configuration[dependent] = dependent_configuration
 
     def block_dependency(self, dependency: "DataMethod") -> None:
         """Block a dependency."""
