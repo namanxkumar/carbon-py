@@ -346,7 +346,7 @@ def create_sample_data():
 
 # Example usage
 if __name__ == "__main__":
-    # Create data from various sources
+    # Create data from various producers
     carbon_data = CarbonData({"x": [1, 2, 3], "y": [4, 5, 6]})
     print(f"Original: {carbon_data}")
 

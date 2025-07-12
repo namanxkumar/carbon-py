@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 
-from carbon.core import Module, ModuleReference, sink, source
+from carbon.core import Module, ModuleReference, consumer, producer
 from carbon.data import Autofill, StampedData
 
 
@@ -49,8 +49,8 @@ class Joint(Module, ABC):
         )
 
     @abstractmethod
-    @sink(JointState)
-    @source(Transform)
+    @consumer(JointState)
+    @producer(Transform)
     def update_state(self, state) -> Transform:
         """
         Update the joint state based on the provided state.
@@ -63,8 +63,8 @@ class ContinuousJoint(Joint):
     def __init__(self, parent: ModuleReference, child: ModuleReference):
         super().__init__(parent, child)
 
-    @sink(JointState)
-    @source(Transform)
+    @consumer(JointState)
+    @producer(Transform)
     def update_state(self, state: JointState) -> Transform:
         """
         Update the joint state and return the corresponding transform.

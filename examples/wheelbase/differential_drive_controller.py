@@ -2,12 +2,12 @@ from typing import Tuple
 
 from carbon import (
     Autofill,
-    ConfigurableSink,
+    ConfiguredType,
     Module,
     ModuleReference,
+    consumer,
+    producer,
     safe_print,
-    sink,
-    source,
 )
 from carbon.transforms import JointState
 from examples.wheelbase.teleop import TeleopCommand
@@ -30,8 +30,8 @@ class DifferentialDriveController(Module):
                 sync=True,
             )
 
-    @sink(ConfigurableSink(TeleopCommand, sticky=False, queue_size=4))
-    @source(JointState, JointState)
+    @consumer(ConfiguredType(TeleopCommand, sticky=False, queue_size=4))
+    @producer(JointState, JointState)
     def create_motor_commands(
         self, command: TeleopCommand
     ) -> Tuple[JointState, JointState]:

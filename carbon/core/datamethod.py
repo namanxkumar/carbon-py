@@ -19,11 +19,11 @@ from carbon.data import Data, DataQueue, QueueItem
 class DependencyConfiguration:
     """
     Configuration for a dependency.
-    - merge_sink_index: Index of the sink to merge data into (None if all sinks are received).
+    - merge_consumer_index: Index of the consumer to merge data into (None if all consumers are received).
     - sync: Whether the dependency is sync or not.
     """
 
-    merge_sink_index: Optional[int]
+    merge_consumer_index: Optional[int]
     sync: bool
     active: bool = True  # Whether the dependency is active or not
 
@@ -32,21 +32,21 @@ class DependencyConfiguration:
 class DependentConfiguration:
     """
     Configuration for a dependent.
-    - split_source_index: Index of the source to split data from (None if all sources are sent).
+    - split_producer_index: Index of the producer to split data from (None if all producers are sent).
     - sync: Whether the dependent is sync or not.
     """
 
-    split_source_index: Optional[int]
+    split_producer_index: Optional[int]
     sync: bool
     active: bool = True  # Whether the dependent is active or not
 
 
 @dataclass
-class SinkConfiguration:
+class ConsumerConfiguration:
     """
-    Configuration for a sink.
-    - queue_size: Size of the queue for the sink.
-    - sticky: Whether the sink is sticky or not.
+    Configuration for a consumer.
+    - queue_size: Size of the queue for the consumer.
+    - sticky: Whether the consumer is sticky or not.
     """
 
     queue_size: int = 1
@@ -57,31 +57,33 @@ class DataMethod:
     def __init__(self, method: Callable):
         self.method = method
 
-        self.sources = cast(
-            Tuple[Type["Data"], ...], getattr(method, "_sources", tuple())
+        self.producers = cast(
+            Tuple[Type["Data"], ...], getattr(method, "_producers", tuple())
         )
-        self.source_indices: Tuple[int, ...] = tuple(range(len(self.sources)))
+        self.producer_indices: Tuple[int, ...] = tuple(range(len(self.producers)))
 
-        self.sinks = cast(Tuple[Type["Data"], ...], getattr(method, "_sinks", tuple()))
-        self.sink_indices: Tuple[int, ...] = tuple(range(len(self.sinks)))
+        self.consumers = cast(
+            Tuple[Type["Data"], ...], getattr(method, "_consumers", tuple())
+        )
+        self.consumer_indices: Tuple[int, ...] = tuple(range(len(self.consumers)))
 
-        sink_configuration = cast(
-            Dict[int, SinkConfiguration],
-            getattr(method, "_sink_configuration", {}),
+        consumer_configuration = cast(
+            Dict[int, ConsumerConfiguration],
+            getattr(method, "_consumer_configuration", {}),
         )
 
         self.input_queue: Dict[int, DataQueue] = {
-            sink_index: DataQueue(
-                self.sinks[sink_index],
-                size=sink_configuration[sink_index].queue_size,
-                sticky=sink_configuration[sink_index].sticky,
+            consumer_index: DataQueue(
+                self.consumers[consumer_index],
+                size=consumer_configuration[consumer_index].queue_size,
+                sticky=consumer_configuration[consumer_index].sticky,
             )
-            for sink_index in self.sink_indices
+            for consumer_index in self.consumer_indices
         }
 
         self.remaining_for_execution: Set[int] = set(
-            self.sink_indices
-        )  # Indices of sinks that are not ready for execution
+            self.consumer_indices
+        )  # Indices of consumers that are not ready for execution
 
         self._dependency_to_configuration: Dict[
             "DataMethod", DependencyConfiguration
@@ -105,8 +107,8 @@ class DataMethod:
         A method is considered active if it doesn't require any data to be executed
         or if it has at least one active dependency or dependent.
         """
-        if self.sinks and not self.active_dependencies:
-            return False  # If there are no active dependencies but there are sinks, the method is not active
+        if self.consumers and not self.active_dependencies:
+            return False  # If there are no active dependencies but there are consumers, the method is not active
         return True
 
     def add_dependency(
@@ -197,11 +199,11 @@ class DataMethod:
         )
 
         data = []
-        for sink_index in self.sink_indices:
-            data.append(self.input_queue[sink_index].pop())  # Memory is allocated
+        for consumer_index in self.consumer_indices:
+            data.append(self.input_queue[consumer_index].pop())  # Memory is allocated
 
-            if self.input_queue[sink_index].is_empty():
-                self.remaining_for_execution.add(sink_index)
+            if self.input_queue[consumer_index].is_empty():
+                self.remaining_for_execution.add(consumer_index)
         return data
 
     def receive_data(
@@ -211,22 +213,22 @@ class DataMethod:
     ) -> None:
         configuration = self.get_dependency_configuration(dependency)
 
-        if configuration.merge_sink_index is None:
+        if configuration.merge_consumer_index is None:
             assert isinstance(data, tuple), "Expected data to be a tuple"
 
             # If the dependency is a direct connection, add all data to the input queue
-            for sink_index, item in zip(self.sink_indices, data):
-                self.input_queue[sink_index].append(item, sync=configuration.sync)
-                self.remaining_for_execution.discard(sink_index)
+            for consumer_index, item in zip(self.consumer_indices, data):
+                self.input_queue[consumer_index].append(item, sync=configuration.sync)
+                self.remaining_for_execution.discard(consumer_index)
         else:
             assert not isinstance(data, (list, tuple)) or len(data) == 1, (
                 "Expected data to be a singleton tuple or a Data instance"
             )
 
-            self.input_queue[configuration.merge_sink_index].append(
+            self.input_queue[configuration.merge_consumer_index].append(
                 data[0] if isinstance(data, tuple) else data, sync=configuration.sync
             )
-            self.remaining_for_execution.discard(configuration.merge_sink_index)
+            self.remaining_for_execution.discard(configuration.merge_consumer_index)
 
     def execute(self) -> Optional[Tuple[QueueItem, ...]]:
         """Execute the method and return the output."""
@@ -245,8 +247,8 @@ class DataMethod:
 
         output = ensure_tuple_format(output)
 
-        assert len(output) == len(self.sources), (
-            f"Method {self.name} must return {len(self.sources)} items, but got {len(output)}."
+        assert len(output) == len(self.producers), (
+            f"Method {self.name} must return {len(self.producers)} items, but got {len(output)}."
         )
 
         return output

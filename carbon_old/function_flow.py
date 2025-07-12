@@ -9,8 +9,8 @@ class FunctionNode:
     def __init__(self, function: Callable):
         self.name = function.__name__
         self.function = function
-        self.sink_type = None  # Type of the sink
-        self.source_type = None
+        self.consumer_type = None  # Type of the consumer
+        self.producer_type = None
         self.dependencies: List[FunctionNode] = []  # Functions that feed into this one
         self.dependents: List[FunctionNode] = []  # Functions that this one feeds into
         self.result = None  # Stores the last execution result
@@ -52,32 +52,32 @@ class FunctionFlow:
 
     def _connect(
         self,
-        source: Callable | Tuple[Callable, ...],
-        sink: Callable | Tuple[Callable, ...],
+        producer: Callable | Tuple[Callable, ...],
+        consumer: Callable | Tuple[Callable, ...],
     ):
-        """Connect source function to sink function."""
-        source_nodes: List[FunctionNode] = []
-        if isinstance(source, tuple):
-            for function in source:
-                source_nodes.append(self._add_function(function))
-        elif callable(source):
-            source_nodes.append(self._add_function(source))
+        """Connect producer function to consumer function."""
+        producer_nodes: List[FunctionNode] = []
+        if isinstance(producer, tuple):
+            for function in producer:
+                producer_nodes.append(self._add_function(function))
+        elif callable(producer):
+            producer_nodes.append(self._add_function(producer))
         else:
-            raise TypeError("Source must be a callable or a tuple of callables")
+            raise TypeError("Producer must be a callable or a tuple of callables")
 
-        sink_nodes: List[FunctionNode] = []
-        if isinstance(sink, tuple):
-            for function in sink:
-                sink_nodes.append(self._add_function(function))
-        elif callable(sink):
-            sink_nodes.append(self._add_function(sink))
+        consumer_nodes: List[FunctionNode] = []
+        if isinstance(consumer, tuple):
+            for function in consumer:
+                consumer_nodes.append(self._add_function(function))
+        elif callable(consumer):
+            consumer_nodes.append(self._add_function(consumer))
         else:
             raise TypeError("Target must be a callable or a tuple of callables")
 
-        for source_node in source_nodes:
-            for sink_node in sink_nodes:
-                source_node.dependents.append(sink_node)
-                sink_node.dependencies.append(source_node)
+        for producer_node in producer_nodes:
+            for consumer_node in consumer_nodes:
+                producer_node.dependents.append(consumer_node)
+                consumer_node.dependencies.append(producer_node)
 
     def build_from_tuples(
         self,
@@ -87,8 +87,8 @@ class FunctionFlow:
     ):
         """Build the function flow from a list of tuples."""
         for connection in connections:
-            source, sink, _ = connection
-            self._connect(source, sink)
+            producer, consumer, _ = connection
+            self._connect(producer, consumer)
 
         # After building all connections, compute execution order
         self._compute_execution_order()

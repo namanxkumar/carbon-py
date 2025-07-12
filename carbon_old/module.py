@@ -40,8 +40,8 @@ def _addindent(s_: str, numSpaces: int):
 class Module:
     def __init__(self):
         self._modules: OrderedDict[str, Module] = OrderedDict()
-        self._sinks: OrderedDict[Callable, Tuple[Type, ...]] = OrderedDict()
-        self._sources: OrderedDict[Callable, Tuple[Type, ...]] = OrderedDict()
+        self._consumers: OrderedDict[Callable, Tuple[Type, ...]] = OrderedDict()
+        self._producers: OrderedDict[Callable, Tuple[Type, ...]] = OrderedDict()
         self._connections: Set[
             Tuple[
                 Callable | Tuple[Callable, ...],
@@ -57,13 +57,13 @@ class Module:
             ]
         ] = set()
 
-        # Collect sources and sinks
+        # Collect producers and consumers
         for attribute_name in dir(self):
             attribute = getattr(self, attribute_name)
-            if callable(attribute) and hasattr(attribute, "_sources"):
-                self._sources[attribute] = getattr(attribute, "_sources")
-            if callable(attribute) and hasattr(attribute, "_sinks"):
-                self._sinks[attribute] = getattr(attribute, "_sinks")
+            if callable(attribute) and hasattr(attribute, "_producers"):
+                self._producers[attribute] = getattr(attribute, "_producers")
+            if callable(attribute) and hasattr(attribute, "_consumers"):
+                self._consumers[attribute] = getattr(attribute, "_consumers")
 
     def as_reference(self) -> ModuleReference:
         """Convert the module to a reference."""
@@ -93,47 +93,47 @@ class Module:
         main_str += ")"
         return main_str
 
-    def get_sources(
+    def get_producers(
         self, recursive: bool = False, memo: Set = None
     ) -> OrderedDict[Callable, Tuple[Type, ...]]:
-        """Get sources of the module and its immediate children if recursive is False,
-        or all sources in the tree if recursive is True."""
+        """Get producers of the module and its immediate children if recursive is False,
+        or all producers in the tree if recursive is True."""
         if not recursive:
-            return self._sources
+            return self._producers
 
         if memo is None:
             memo = set()
-        sources = self._sources.copy()
+        producers = self._producers.copy()
         for module in self._modules.values():
             # Avoid infinite recursion
             if module in memo:
                 continue
             memo.add(module)
-            # Get sources from the module
-            module_sources = module.get_sources(recursive=True, memo=memo)
-            sources.update(module_sources)
-        return sources
+            # Get producers from the module
+            module_producers = module.get_producers(recursive=True, memo=memo)
+            producers.update(module_producers)
+        return producers
 
-    def get_sinks(
+    def get_consumers(
         self, recursive: bool = False, memo: Set = None
     ) -> OrderedDict[Callable, Tuple[Type, ...]]:
-        """Get sinks of the module and its immediate children if recursive is False,
-        or all sinks in the tree if recursive is True."""
+        """Get consumers of the module and its immediate children if recursive is False,
+        or all consumers in the tree if recursive is True."""
         if not recursive:
-            return self._sinks
+            return self._consumers
 
         if memo is None:
             memo = set()
-        sinks = self._sinks.copy()
+        consumers = self._consumers.copy()
         for module in self._modules.values():
             # Avoid infinite recursion
             if module in memo:
                 continue
             memo.add(module)
-            # Get sinks from the module
-            module_sinks = module.get_sinks(recursive=True, memo=memo)
-            sinks.update(module_sinks)
-        return sinks
+            # Get consumers from the module
+            module_consumers = module.get_consumers(recursive=True, memo=memo)
+            consumers.update(module_consumers)
+        return consumers
 
     def get_connections(
         self, recursive: bool = True, memo: Set = None
@@ -178,75 +178,79 @@ class Module:
         else:
             super().__setattr__(name, value)
 
-    def _get_source_path_from_type(
-        self, source: "Module" | Callable, message_type: Type
+    def _get_producer_path_from_type(
+        self, producer: "Module" | Callable, message_type: Type
     ) -> Callable:
-        """Get the source path from a source and its type."""
+        """Get the producer path from a producer and its type."""
         if type(message_type) is not tuple:
             message_type = (message_type,)
-        if isinstance(source, Module):
-            sources = source.get_sources()
+        if isinstance(producer, Module):
+            producers = producer.get_producers()
 
-            # Filter sources to match the type
-            sources = {k: v for k, v in sources.items() if v == message_type}
+            # Filter producers to match the type
+            producers = {k: v for k, v in producers.items() if v == message_type}
 
-            if not sources:
+            if not producers:
                 raise ValueError(
-                    f"No matching sources found for the given type {message_type} in module {source.__class__.__name__}"
+                    f"No matching producers found for the given type {message_type} in module {producer.__class__.__name__}"
                 )
 
-            if len(sources) > 1:
+            if len(producers) > 1:
                 raise ValueError(
-                    f"Multiple sources found for the given type {message_type} in module {source.__class__.__name__}"
+                    f"Multiple producers found for the given type {message_type} in module {producer.__class__.__name__}"
                 )
 
-            return list(sources.keys())[0]
-        elif isinstance(source, Callable):
-            if not hasattr(source, "_sources"):
-                raise ValueError(f"Provided function {source.__name__} is not a source")
-            source_type = getattr(source, "_sources")
-            if source_type != message_type:
+            return list(producers.keys())[0]
+        elif isinstance(producer, Callable):
+            if not hasattr(producer, "_producers"):
                 raise ValueError(
-                    f"Provided source type {message_type} does not match the source function {source.__name__}"
+                    f"Provided function {producer.__name__} is not a producer"
                 )
-            return source
+            producer_type = getattr(producer, "_producers")
+            if producer_type != message_type:
+                raise ValueError(
+                    f"Provided producer type {message_type} does not match the producer function {producer.__name__}"
+                )
+            return producer
         else:
-            raise TypeError("Provided source is neither a callable nor a module")
+            raise TypeError("Provided producer is neither a callable nor a module")
 
-    def _get_sink_path_from_type(
-        self, sink: "Module" | Callable, message_type: Type
+    def _get_consumer_path_from_type(
+        self, consumer: "Module" | Callable, message_type: Type
     ) -> Callable:
-        """Get the sink path from a sink and its type."""
+        """Get the consumer path from a consumer and its type."""
         if type(message_type) is not tuple:
             message_type = (message_type,)
-        if isinstance(sink, Module):
-            sinks = sink.get_sinks()
+        if isinstance(consumer, Module):
+            consumers = consumer.get_consumers()
 
-            # Filter sinks to match the type
-            sinks = {k: v for k, v in sinks.items() if v == message_type}
+            # Filter consumers to match the type
+            consumers = {k: v for k, v in consumers.items() if v == message_type}
 
-            if not sinks:
+            if not consumers:
                 raise ValueError(
-                    f"No matching sinks found for the given type {message_type} in module {sink.__class__.__name__}"
+                    f"No matching consumers found for the given type {message_type} in module {consumer.__class__.__name__}"
                 )
 
-            if len(sinks) > 1:
+            if len(consumers) > 1:
                 raise ValueError(
-                    f"Multiple sinks found for the given type {message_type} in module {sink.__class__.__name__}"
+                    f"Multiple consumers found for the given type {message_type} in module {consumer.__class__.__name__}"
                 )
 
-            return list(sinks.keys())[0]
-        elif isinstance(sink, Callable):
-            if not hasattr(sink, "_sinks"):
-                raise ValueError(f"Provided function {sink.__name__} is not a sink")
-            sink_type = getattr(sink, "_sinks")
-            if sink_type != message_type:
+            return list(consumers.keys())[0]
+        elif isinstance(consumer, Callable):
+            if not hasattr(consumer, "_consumers"):
                 raise ValueError(
-                    f"Provided sink type {message_type} does not match the sink function {sink.__name__}"
+                    f"Provided function {consumer.__name__} is not a consumer"
                 )
-            return sink
+            consumer_type = getattr(consumer, "_consumers")
+            if consumer_type != message_type:
+                raise ValueError(
+                    f"Provided consumer type {message_type} does not match the consumer function {consumer.__name__}"
+                )
+            return consumer
         else:
-            raise TypeError("Provided sink is neither a callable nor a module")
+            raise TypeError("Provided consumer is neither a callable nor a module")
 
     def _validate_connection(
         self,
@@ -256,170 +260,174 @@ class Module:
             Tuple[Type, ...],
         ],
     ):
-        source_path, sink_path, _ = connection
+        producer_path, consumer_path, _ = connection
         existing_connections = self.get_connections(recursive=True)
         for existing_connection in existing_connections:
-            existing_source, existing_sink, _ = existing_connection
-            if sink_path == existing_sink:
+            existing_producer, existing_consumer, _ = existing_connection
+            if consumer_path == existing_consumer:
                 raise ValueError(
-                    f"Sink {sink_path} is already connected to another source {existing_source}"
+                    f"Consumer {consumer_path} is already connected to another producer {existing_producer}"
                 )
-            if isinstance(existing_sink, tuple):
-                if sink_path in existing_sink:
+            if isinstance(existing_consumer, tuple):
+                if consumer_path in existing_consumer:
                     raise ValueError(
-                        f"Sink {sink_path} is already connected to another source {existing_source}"
+                        f"Consumer {consumer_path} is already connected to another producer {existing_producer}"
                     )
             if existing_connection == connection:
                 raise ValueError(
-                    f"Connection already exists between {source_path} and {sink_path}"
+                    f"Connection already exists between {producer_path} and {consumer_path}"
                 )
 
     def create_one_to_one_connection(
         self,
-        source: "Module" | Callable,
-        sink: "Module" | Callable,
+        producer: "Module" | Callable,
+        consumer: "Module" | Callable,
         message_type: Type | Tuple[Type, ...],
     ) -> None:
-        """Create a one-to-one connection between a source and a sink."""
+        """Create a one-to-one connection between a producer and a consumer."""
 
-        source_path = self._get_source_path_from_type(source, message_type)
+        producer_path = self._get_producer_path_from_type(producer, message_type)
 
-        sink_path = self._get_sink_path_from_type(sink, message_type)
+        consumer_path = self._get_consumer_path_from_type(consumer, message_type)
 
         if type(message_type) is not tuple:
             message_type = (message_type,)
 
         # Create the connection
-        connection = (source_path, sink_path, message_type)
+        connection = (producer_path, consumer_path, message_type)
         self._validate_connection(connection)
         self._connections.add(connection)
 
     def create_one_to_many_connection(
         self,
-        source: "Module" | Callable,
-        sink: Tuple["Module", ...] | Tuple[Callable, ...],
+        producer: "Module" | Callable,
+        consumer: Tuple["Module", ...] | Tuple[Callable, ...],
         message_type: Tuple[Type, ...],
     ):
-        """Create a one-to-many connection between a source and multiple sinks."""
-        if len(sink) != len(message_type):
-            raise ValueError("Number of sinks must match the number of types")
+        """Create a one-to-many connection between a producer and multiple consumers."""
+        if len(consumer) != len(message_type):
+            raise ValueError("Number of consumers must match the number of types")
 
-        source_path = self._get_source_path_from_type(source, message_type)
+        producer_path = self._get_producer_path_from_type(producer, message_type)
 
-        if isinstance(sink, tuple):
-            sink_paths = []
-            for s, t in zip(sink, message_type):
-                sink_path = self._get_sink_path_from_type(s, t)
-                sink_paths.append(sink_path)
+        if isinstance(consumer, tuple):
+            consumer_paths = []
+            for s, t in zip(consumer, message_type):
+                consumer_path = self._get_consumer_path_from_type(s, t)
+                consumer_paths.append(consumer_path)
         else:
-            raise TypeError("Provided sinks must be a tuple")
+            raise TypeError("Provided consumers must be a tuple")
 
         if type(message_type) is not tuple:
             message_type = (message_type,)
 
         # Create the connection
-        connection = (source_path, tuple(sink_paths), message_type)
+        connection = (producer_path, tuple(consumer_paths), message_type)
         self._validate_connection(connection)
         self._connections.add(connection)
 
     def create_many_to_one_connection(
         self,
-        source: Tuple["Module", ...] | Tuple[Callable, ...],
-        sink: "Module" | Callable,
+        producer: Tuple["Module", ...] | Tuple[Callable, ...],
+        consumer: "Module" | Callable,
         message_type: Tuple[Type, ...],
     ) -> None:
-        """Create a many-to-one connection between multiple sources and a sink."""
-        if len(source) != len(message_type):
-            raise ValueError("Number of sources must match the number of types")
+        """Create a many-to-one connection between multiple producers and a consumer."""
+        if len(producer) != len(message_type):
+            raise ValueError("Number of producers must match the number of types")
 
-        sink_path = self._get_sink_path_from_type(sink, message_type)
+        consumer_path = self._get_consumer_path_from_type(consumer, message_type)
 
-        if isinstance(source, tuple):
-            source_paths = []
-            for s, t in zip(source, message_type):
-                source_path = self._get_source_path_from_type(s, t)
-                source_paths.append(source_path)
+        if isinstance(producer, tuple):
+            producer_paths = []
+            for s, t in zip(producer, message_type):
+                producer_path = self._get_producer_path_from_type(s, t)
+                producer_paths.append(producer_path)
         else:
-            raise TypeError("Provided sources must be a tuple")
+            raise TypeError("Provided producers must be a tuple")
 
         if type(message_type) is not tuple:
             message_type = (message_type,)
 
         # Create the connection
-        connection = (tuple(source_paths), sink_path, message_type)
+        connection = (tuple(producer_paths), consumer_path, message_type)
         self._validate_connection(connection)
         self._connections.add(connection)
 
     def block_connection(
         self,
-        source: "Module"
+        producer: "Module"
         | Callable
         | Tuple[Callable, ...]
         | Tuple["Module", ...]
         | None,
-        sink: "Module" | Callable | Tuple[Callable, ...] | Tuple["Module", ...] | None,
+        consumer: "Module"
+        | Callable
+        | Tuple[Callable, ...]
+        | Tuple["Module", ...]
+        | None,
         message_type: Type | Tuple[Type, ...],
     ):
-        """Block a connection between a source and a sink."""
+        """Block a connection between a producer and a consumer."""
         # If connection is many to many
-        if isinstance(source, tuple) and isinstance(sink, tuple):
-            raise ValueError("Source and Sink cannot be both tuples.")
+        if isinstance(producer, tuple) and isinstance(consumer, tuple):
+            raise ValueError("Producer and Consumer cannot be both tuples.")
 
-        if source is None:
-            source_path = None
-        elif isinstance(source, tuple):
-            source_paths = []
-            for s, t in zip(source, message_type):
-                source_path = self._get_source_path_from_type(s, t)
-                source_paths.append(source_path)
-            source_path = tuple(source_paths)
+        if producer is None:
+            producer_path = None
+        elif isinstance(producer, tuple):
+            producer_paths = []
+            for s, t in zip(producer, message_type):
+                producer_path = self._get_producer_path_from_type(s, t)
+                producer_paths.append(producer_path)
+            producer_path = tuple(producer_paths)
         else:
-            source_path = self._get_source_path_from_type(source, message_type)
+            producer_path = self._get_producer_path_from_type(producer, message_type)
 
-        if sink is None:
-            sink_path = None
-        elif isinstance(sink, tuple):
-            sink_paths = []
-            for s, t in zip(sink, message_type):
-                sink_path = self._get_sink_path_from_type(s, t)
-                sink_paths.append(sink_path)
-            sink_path = tuple(sink_paths)
+        if consumer is None:
+            consumer_path = None
+        elif isinstance(consumer, tuple):
+            consumer_paths = []
+            for s, t in zip(consumer, message_type):
+                consumer_path = self._get_consumer_path_from_type(s, t)
+                consumer_paths.append(consumer_path)
+            consumer_path = tuple(consumer_paths)
         else:
-            sink_path = self._get_sink_path_from_type(sink, message_type)
+            consumer_path = self._get_consumer_path_from_type(consumer, message_type)
 
         if type(message_type) is not tuple:
             message_type = (message_type,)
 
-        print(source_path, sink_path, message_type)
+        print(producer_path, consumer_path, message_type)
 
         # Remove the connection
         for existing_connection in self.get_connections(recursive=True):
-            existing_source, existing_sink, existing_type = existing_connection
+            existing_producer, existing_consumer, existing_type = existing_connection
             removal = False
             if (
-                source_path is None
-                and source_path is None
+                producer_path is None
+                and producer_path is None
                 and message_type == existing_type
             ):
                 removal = True
 
             if (
-                source_path is None
-                and existing_sink == sink_path
+                producer_path is None
+                and existing_consumer == consumer_path
                 and message_type == existing_type
             ):
                 removal = True
 
             if (
-                sink_path is None
-                and existing_source == source_path
+                consumer_path is None
+                and existing_producer == producer_path
                 and message_type == existing_type
             ):
                 removal = True
 
             if (
-                source_path == existing_source
-                and sink_path == existing_sink
+                producer_path == existing_producer
+                and consumer_path == existing_consumer
                 and message_type == existing_type
             ):
                 removal = True
@@ -439,17 +447,17 @@ class Module:
         pass
 
 
-def source(*sources):
+def producer(*producers):
     def decorator(func):
-        setattr(func, "_sources", sources)
+        setattr(func, "_producers", producers)
         return func
 
     return decorator
 
 
-def sink(*sinks):
+def consumer(*consumers):
     def decorator(func):
-        setattr(func, "_sinks", sinks)
+        setattr(func, "_consumers", consumers)
         return func
 
     return decorator

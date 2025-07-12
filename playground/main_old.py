@@ -5,7 +5,7 @@ from carbon_old.differential_drive_controller import (
 from carbon_old.function_flow import FunctionFlow
 from carbon_old.joint import ContinuousJoint, JointState
 from carbon_old.kangaroo import KangarooDriver
-from carbon_old.module import Module, source
+from carbon_old.module import Module, producer
 
 
 class Wheel(Module):
@@ -55,7 +55,7 @@ class Teleop(Module):
     def __init__(self):
         super().__init__()
 
-    @source(TeleopCommand)
+    @producer(TeleopCommand)
     def teleop_command(self) -> TeleopCommand:
         # return TeleopCommand(left=0.0, right=0.0)
         print("running teleop_command")
@@ -86,10 +86,10 @@ def pretty_print_ordered_dict(od, indent=0):
 
 
 print(robot)
-print("\nSources:")
-pretty_print_ordered_dict(robot.get_sources(recursive=True))
-print("\nSinks:")
-pretty_print_ordered_dict(robot.get_sinks(recursive=True))
+print("\nProducers:")
+pretty_print_ordered_dict(robot.get_producers(recursive=True))
+print("\nConsumers:")
+pretty_print_ordered_dict(robot.get_consumers(recursive=True))
 print("\nConnections:")
 connections = list(robot.get_connections())
 for i in connections:

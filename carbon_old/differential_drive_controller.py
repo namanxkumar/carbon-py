@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from typing import Tuple
 
 from .joint import JointState
-from .module import Module, ModuleReference, sink, source
+from .module import Module, ModuleReference, consumer, producer
 
 
 @dataclass
@@ -27,8 +27,8 @@ class DifferentialDriveController(Module):
                 (JointState, JointState),
             )
 
-    @sink(TeleopCommand)
-    @source(JointState, JointState)
+    @consumer(TeleopCommand)
+    @producer(JointState, JointState)
     def create_motor_commands(
         self, command: TeleopCommand
     ) -> Tuple[JointState, JointState]:

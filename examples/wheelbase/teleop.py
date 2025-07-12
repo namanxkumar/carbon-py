@@ -2,7 +2,7 @@ import sys
 import termios
 import tty
 
-from carbon import Data, Module, source
+from carbon import Data, Module, producer
 
 
 class TeleopCommand(Data):
@@ -14,7 +14,7 @@ class Teleop(Module):
     def __init__(self):
         super().__init__()
 
-    @source(TeleopCommand)
+    @producer(TeleopCommand)
     def teleop_command(self) -> TeleopCommand:
         print("Running Teleop (press 'q' to exit, use wasd for control)")
 

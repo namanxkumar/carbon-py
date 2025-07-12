@@ -1,4 +1,4 @@
-from carbon.core import Module, safe_print, sink
+from carbon.core import Module, consumer, safe_print
 from carbon.data import Autofill, Data, StampedData
 from carbon.transforms.joints import Transform
 
@@ -65,7 +65,7 @@ class Link(Module):
             ),  # Placeholder for orientation (identity quaternion)
         )
 
-    @sink(Transform)
+    @consumer(Transform)
     def transform(self, transform: Transform):
         """
         Apply a transformation to the link's pose.

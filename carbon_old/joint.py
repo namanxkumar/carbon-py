@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from .module import Module, ModuleReference, sink
+from .module import Module, ModuleReference, consumer
 
 
 @dataclass
@@ -15,7 +15,7 @@ class ContinuousJoint(Module):
         self.parent = parent
         self.child = child
 
-    @sink(JointState)
+    @consumer(JointState)
     def update_state(self, state: JointState):
         # Update the state of the joint based on the received state
         print(f"Updating joint state: {state}")

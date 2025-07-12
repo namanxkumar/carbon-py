@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from typing import Tuple
 
 from .joint import JointState
-from .module import Module, ModuleReference, sink, source
+from .module import Module, ModuleReference, consumer, producer
 
 
 @dataclass
@@ -27,12 +27,12 @@ class KangarooDriver(Module):
                 (JointState, JointState),
             )
 
-    @sink(JointState, JointState)
+    @consumer(JointState, JointState)
     def send_drive_commands(self, command: Tuple[JointState, JointState]):
         # Executes drive command
         print("Executing drive command", command)
 
-    @source(JointState, JointState)
+    @producer(JointState, JointState)
     def receive_motor_feedback(self):
         return (
             JointState(position=0.0, velocity=0.0),

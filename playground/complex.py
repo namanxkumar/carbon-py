@@ -2,7 +2,7 @@ from dataclasses import dataclass
 
 from complexdata import Image, IMUData, LaserScan, OccupancyGrid, Odometry, Pose, Twist
 
-from carbon import Data, Module, ModuleReference, sink, source
+from carbon import Data, Module, ModuleReference, consumer, producer
 
 
 def startup(func):
@@ -15,7 +15,7 @@ class LIDAR(Module):
     def __init__(self):
         super().__init__()
 
-    @source(LaserScan)
+    @producer(LaserScan)
     def scan(self) -> LaserScan:
         # Simulate a LIDAR scan returning some data
         return LaserScan()
@@ -25,7 +25,7 @@ class IMU(Module):
     def __init__(self):
         super().__init__()
 
-    @source(IMUData)
+    @producer(IMUData)
     def read_imu(self) -> IMUData:
         # Simulate reading IMU data
         return IMUData(
@@ -37,7 +37,7 @@ class Camera(Module):
     def __init__(self):
         super().__init__()
 
-    @source(Image)
+    @producer(Image)
     def capture_image(self) -> Image:
         # Simulate capturing an image
         return Image(data=b"")  # Replace with actual image data if needed
@@ -47,7 +47,7 @@ class DifferentialDrive(Module):
     def __init__(self):
         super().__init__()
 
-    @source(Odometry)
+    @producer(Odometry)
     def get_odometry(self) -> Odometry:
         # Simulate getting odometry data
         return Odometry(
@@ -56,7 +56,7 @@ class DifferentialDrive(Module):
             twist=None,  # Replace with actual TwistWithCovariance data if needed
         )
 
-    @sink(Twist)
+    @consumer(Twist)
     def drive(self, twist: Twist):
         # Simulate driving the robot with the given twist
         print(f"Driving with twist: {twist}")
@@ -70,15 +70,15 @@ class Mapping(Module):
     def __init__(self):
         super().__init__()
 
-    @sink(MapRequest)
-    @source(OccupancyGrid)
+    @consumer(MapRequest)
+    @producer(OccupancyGrid)
     def get_map_service(self) -> OccupancyGrid:
         # Simulate a service that returns an occupancy grid map
         print("Getting map service")
         return OccupancyGrid()
 
-    @sink(LaserScan, Odometry, IMUData)
-    @source(OccupancyGrid)
+    @consumer(LaserScan, Odometry, IMUData)
+    @producer(OccupancyGrid)
     def map_environment(
         self, scan: LaserScan, odometry: Odometry, imu: IMUData
     ) -> OccupancyGrid:
@@ -99,14 +99,14 @@ class Localization(Module):
         )
 
     @startup
-    @source(Mapping.MapRequest)
+    @producer(Mapping.MapRequest)
     def request_map(self) -> Mapping.MapRequest:
         # Simulate requesting a map
         print("Requesting map")
         return Mapping.MapRequest(parameters={"resolution": 0.05})
 
-    @sink(LaserScan, Odometry, Pose, OccupancyGrid)
-    @source(Pose)
+    @consumer(LaserScan, Odometry, Pose, OccupancyGrid)
+    @producer(Pose)
     def localize(
         self,
         scan: LaserScan,

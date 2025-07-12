@@ -1,6 +1,6 @@
 from typing import Tuple
 
-from carbon.core import ConfigurableSink, ExecutionGraph, Module, sink, source
+from carbon.core import ConfiguredType, ExecutionGraph, Module, consumer, producer
 from carbon.data import Data
 
 
@@ -13,7 +13,7 @@ class ModuleA(Module):
         super().__init__()
         self.a = 0
 
-    @source(DataA)
+    @producer(DataA)
     def method_a(self) -> DataA:
         self.a += 1
         return DataA(a=self.a)
@@ -24,7 +24,7 @@ class ModuleA2(Module):
         super().__init__()
         self.a = 0
 
-    @source(DataA)
+    @producer(DataA)
     def method_a2(self) -> DataA:
         self.a -= 1
         return DataA(a=self.a)
@@ -38,7 +38,7 @@ class ModuleB(Module):
     def __init__(self):
         super().__init__()
 
-    @source(DataB)
+    @producer(DataB)
     def method_b(self) -> DataB:
         return DataB()
 
@@ -51,7 +51,7 @@ class ModuleC(Module):
     def __init__(self):
         super().__init__()
 
-    @source(DataC)
+    @producer(DataC)
     def method_a(self) -> DataC:
         return DataC()
 
@@ -64,7 +64,7 @@ class ModuleD(Module):
     def __init__(self):
         super().__init__()
 
-    @source(DataD, DataD)
+    @producer(DataD, DataD)
     def method_a(self) -> Tuple[DataD, DataD]:
         return DataD(), DataD()
 
@@ -73,15 +73,18 @@ class ModuleE(Module):
     def __init__(self):
         super().__init__()
 
-    @sink(ConfigurableSink(DataA, sticky=True), ConfigurableSink(DataB, sticky=True))
+    @consumer(
+        ConfiguredType(DataA, sticky=True),
+        ConfiguredType(DataB, sticky=True),
+    )
     def method_e(self, data: DataA, data2: DataB) -> None:
         print(f"ModuleE received DataA: {data.a} and DataB: {data2.a}")
 
-    @sink(DataC)
+    @consumer(DataC)
     def method_b(self, data: DataC) -> None:
         print(f"ModuleE received DataC: {data.a}")
 
-    @sink(DataD)
+    @consumer(DataD)
     def method_c(self, data1: DataD) -> None:
         print(f"ModuleE received DataD: {data1.a}")
 

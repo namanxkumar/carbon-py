@@ -1,10 +1,10 @@
 from carbon.core import (
-    ConfigurableSink,
+    ConfiguredType,
     ExecutionGraph,
     Module,
     ModuleReference,
+    consumer,
+    producer,
     safe_print,
-    sink,
-    source,
 )
 from carbon.data import Autofill, Data, Header, StampedData

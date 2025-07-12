@@ -29,7 +29,7 @@ class WheelBase(Module):
             parent=self.as_reference(), child=self.right_wheel.as_reference()
         )
 
-        # self.block_connection(source=None, sink=None, data=Transform)
+        # self.block_connection(producer=None, consumer=None, data=Transform)
 
         self.controller = DifferentialDriveController(
             left_motor=self.left_motor.as_reference(),

@@ -167,14 +167,14 @@ class ExecutionGraph:
                         assert method_output is not None, (
                             f"Method {method.name} returned None, but it should return a valid output for its dependents."
                         )
-                        split_source_index = method.get_dependent_configuration(
+                        split_producer_index = method.get_dependent_configuration(
                             dependent_method
-                        ).split_source_index
+                        ).split_producer_index
                         dependent_method.receive_data(
                             method,
                             method_output
-                            if split_source_index is None
-                            else method_output[split_source_index],
+                            if split_producer_index is None
+                            else method_output[split_producer_index],
                         )
 
                         # If the dependent method is in the first layer and its process is not ready, mark it as ready
@@ -188,8 +188,8 @@ class ExecutionGraph:
                                 self.process_mapping[dependent_method]
                             ] = True
 
-                    if method.is_ready_for_execution and method.sinks:
-                        # If the method is ready for execution and has sinks, it can be executed again
+                    if method.is_ready_for_execution and method.consumers:
+                        # If the method is ready for execution and has consumers, it can be executed again
                         remaining_methods.append(method)
             # break
 

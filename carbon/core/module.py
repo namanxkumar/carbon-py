@@ -11,45 +11,45 @@ from typing import (
 )
 
 from carbon.core.connection import Connection
-from carbon.core.datamethod import DataMethod, SinkConfiguration
+from carbon.core.datamethod import ConsumerConfiguration, DataMethod
 from carbon.core.utilities import is_equal_with_singleton
 from carbon.data import Data
 
 
-class ConfigurableSink:
+class ConfiguredType:
     def __init__(self, type_: Type["Data"], queue_size: int = 1, sticky: bool = False):
         self.type = type_
-        self.configuration = SinkConfiguration(queue_size=queue_size, sticky=sticky)
+        self.configuration = ConsumerConfiguration(queue_size=queue_size, sticky=sticky)
 
 
-def source(*sources: Type["Data"]):
+def producer(*producers: Type["Data"]):
     def decorator(
         func: Callable[..., Union["Data", Tuple["Data", ...], None]],
     ):
-        setattr(func, "_sources", sources)
+        setattr(func, "_producers", producers)
         return func
 
     return decorator
 
 
-def sink(*sinks: Union[Type["Data"], ConfigurableSink]):
+def consumer(*consumers: Union[Type["Data"], ConfiguredType]):
     def decorator(func: Callable[..., Union["Data", Tuple["Data", ...], None]]):
         setattr(
             func,
-            "_sinks",
+            "_consumers",
             tuple(
-                sink.type if isinstance(sink, ConfigurableSink) else sink
-                for sink in sinks
+                consumer.type if isinstance(consumer, ConfiguredType) else consumer
+                for consumer in consumers
             ),
         )
         setattr(
             func,
-            "_sink_configuration",
+            "_consumer_configuration",
             {
-                sink_index: sink.configuration
-                if isinstance(sink, ConfigurableSink)
-                else SinkConfiguration()
-                for sink_index, sink in enumerate(sinks)
+                consumer_index: consumer.configuration
+                if isinstance(consumer, ConfiguredType)
+                else ConsumerConfiguration()
+                for consumer_index, consumer in enumerate(consumers)
             },
         )
         return func
@@ -77,38 +77,40 @@ class ModuleReference:
 class Module:
     def __init__(self):
         self._modules: List["Module"] = []
-        self._sinks: Dict[Tuple[Type["Data"], ...], "DataMethod"] = {}
-        self._sources: Dict[Tuple[Type["Data"], ...], "DataMethod"] = {}
+        self._consumers: Dict[Tuple[Type["Data"], ...], "DataMethod"] = {}
+        self._producers: Dict[Tuple[Type["Data"], ...], "DataMethod"] = {}
         self._methods: Set["DataMethod"] = set()
         self._connections: Set["Connection"] = set()
 
-        # Collect sources and sinks
+        # Collect producers and consumers
         for attribute_name in dir(self):
             attribute = getattr(self, attribute_name)
 
             if callable(attribute) and (
-                hasattr(attribute, "_sources") or hasattr(attribute, "_sinks")
+                hasattr(attribute, "_producers") or hasattr(attribute, "_consumers")
             ):
                 data_method = DataMethod(attribute)
             else:
                 continue
 
-            if hasattr(attribute, "_sources"):
-                datatype: Tuple[Type["Data"], ...] = getattr(attribute, "_sources")
-                if self._sources.get(datatype) is None:
-                    self._sources[datatype] = data_method
+            if hasattr(attribute, "_producers"):
+                datatype: Tuple[Type["Data"], ...] = getattr(attribute, "_producers")
+                if self._producers.get(datatype) is None:
+                    self._producers[datatype] = data_method
                     self._methods.add(data_method)
                 else:
                     raise ValueError(
-                        f"Multiple sources defined for data type {datatype}"
+                        f"Multiple producers defined for data type {datatype}"
                     )
-            if hasattr(attribute, "_sinks"):
-                datatype: Tuple[Type["Data"], ...] = getattr(attribute, "_sinks")
-                if self._sinks.get(datatype) is None:
-                    self._sinks[datatype] = data_method
+            if hasattr(attribute, "_consumers"):
+                datatype: Tuple[Type["Data"], ...] = getattr(attribute, "_consumers")
+                if self._consumers.get(datatype) is None:
+                    self._consumers[datatype] = data_method
                     self._methods.add(data_method)
                 else:
-                    raise ValueError(f"Multiple sinks defined for data type {datatype}")
+                    raise ValueError(
+                        f"Multiple consumers defined for data type {datatype}"
+                    )
 
     def __setattr__(self, name, value):
         if isinstance(value, Module):
@@ -125,7 +127,7 @@ class Module:
         for existing_connection in existing_connections:
             if existing_connection == connection:
                 raise ValueError(
-                    f"Connection already exists between {connection.source} and {connection.sink} for data {connection.data}"
+                    f"Connection already exists between {connection.producer} and {connection.consumer} for data {connection.data}"
                 )
 
     def __repr__(self, memo=None):
@@ -232,14 +234,14 @@ class Module:
     def create_connection(
         self,
         data: Union[Type["Data"], Sequence[Type["Data"]]],
-        source: Union["Module", Sequence["Module"]],
-        sink: Union["Module", Sequence["Module"]],
+        producer: Union["Module", Sequence["Module"]],
+        consumer: Union["Module", Sequence["Module"]],
         sync: bool = False,
     ):
         """
-        Create a connection between source and sink modules for the specified data type.
+        Create a connection between producer and consumer modules for the specified data type.
         """
-        connection = Connection(source, sink, data, sync=sync)
+        connection = Connection(producer, consumer, data, sync=sync)
         self._ensure_unique_connection(connection)
         self._connections.add(connection)
 
@@ -248,36 +250,36 @@ class Module:
     def block_connection(
         self,
         data: Union[Type["Data"], Sequence[Type["Data"]]],
-        source: Union["Module", Sequence["Module"], None] = None,
-        sink: Union["Module", Sequence["Module"], None] = None,
+        producer: Union["Module", Sequence["Module"], None] = None,
+        consumer: Union["Module", Sequence["Module"], None] = None,
     ):
         """
-        Block a connection between source and sink modules for the specified data type.
+        Block a connection between producer and consumer modules for the specified data type.
         """
         for existing_connection in self.get_connections():
             removal = False
 
             if (
-                source is None
-                and sink is None
+                producer is None
+                and consumer is None
                 and is_equal_with_singleton(existing_connection.data, data)
             ):
                 removal = True
             elif (
-                source is None
-                and is_equal_with_singleton(existing_connection.sink, sink)
+                producer is None
+                and is_equal_with_singleton(existing_connection.consumer, consumer)
                 and is_equal_with_singleton(existing_connection.data, data)
             ):
                 removal = True
             elif (
-                is_equal_with_singleton(existing_connection.source, source)
-                and sink is None
+                is_equal_with_singleton(existing_connection.producer, producer)
+                and consumer is None
                 and is_equal_with_singleton(existing_connection.data, data)
             ):
                 removal = True
             elif (
-                is_equal_with_singleton(existing_connection.source, source)
-                and is_equal_with_singleton(existing_connection.sink, sink)
+                is_equal_with_singleton(existing_connection.producer, producer)
+                and is_equal_with_singleton(existing_connection.consumer, consumer)
                 and is_equal_with_singleton(existing_connection.data, data)
             ):
                 removal = True
