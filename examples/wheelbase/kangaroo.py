@@ -9,7 +9,7 @@ class KangarooDriver(Module):
     def __init__(self):
         super().__init__()
 
-        self.encoder_is_available = True  # Simulate encoder availability
+        self.encoder_is_available = False  # Simulate encoder availability
 
     @consumer(Velocity, Velocity)
     def drive_motors(self, left_motor: Velocity, right_motor: Velocity):
@@ -30,5 +30,5 @@ class KangarooDriver(Module):
         right_position = Position(
             header=Autofill(), position=Vector3(x=0.0, y=0.0, z=0.0)
         )
-        safe_print(f"Getting encoder feedback: {left_position}, {right_position}")
+        # safe_print(f"Getting encoder feedback: {left_position}, {right_position}")
         return left_position, right_position

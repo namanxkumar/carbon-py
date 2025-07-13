@@ -1,7 +1,8 @@
 from carbon import Module
-from carbon.common_data_types import Position
+from carbon.common_data_types import Position, Velocity
 from carbon.transforms import ContinuousJoint, CylindricalGeometry, Link
 from examples.wheelbase.differential_drive_controller import DifferentialDriveController
+from examples.wheelbase.kangaroo import KangarooDriver
 
 
 class WheelBase(Module):
@@ -32,8 +33,24 @@ class WheelBase(Module):
 
         # self.block_connection(producer=None, consumer=None, data=Transform)
 
-        self.controller = DifferentialDriveController(open_loop=True)
+        self.kangaroo_driver = KangarooDriver()
+        self.controller = DifferentialDriveController(
+            open_loop=not self.kangaroo_driver.encoder_is_available
+        )
+
+        if self.kangaroo_driver.encoder_is_available:
+            self.create_connection(
+                (Position, Position),
+                self.kangaroo_driver,
+                (self.left_motor, self.right_motor),
+            )
+        else:
+            self.create_connection(
+                (Position, Position),
+                self.controller,
+                (self.left_motor, self.right_motor),
+            )
 
         self.create_connection(
-            (Position, Position), self.controller, (self.left_motor, self.right_motor)
+            (Velocity, Velocity), self.controller, self.kangaroo_driver
         )
