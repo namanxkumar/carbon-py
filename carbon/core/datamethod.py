@@ -123,6 +123,8 @@ class DataMethod:
         """
         if self.consumers and not self.active_dependencies:
             return False  # If there are no active dependencies but there are consumers, the method is not active
+        if self.producers and not self.active_dependents:
+            return False  # If there are no active dependents but there are producers, the method is not active
         return True
 
     def add_dependency(

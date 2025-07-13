@@ -128,7 +128,7 @@ class Module:
         for existing_connection in existing_connections:
             if existing_connection == connection:
                 raise ValueError(
-                    f"Connection already exists between {connection.producer} and {connection.consumer} for data {connection.data}"
+                    f"Connection already exists between {connection.producers} and {connection.consumers} for data {connection.data}"
                 )
 
     def __repr__(self, memo=None, detail: bool = False) -> str:
@@ -246,6 +246,120 @@ class Module:
 
         return methods
 
+    def get_produced_data_types(
+        self, recursive: bool = True, _memo: Optional[Set] = None
+    ):
+        """
+        Get all data types produced by this module and its submodules.
+        """
+        if not recursive:
+            return set(self._producers.keys())
+
+        if _memo is None:
+            _memo = set()
+
+        produced_data_types = set(self._producers.keys())
+
+        for module in self._modules:
+            if module not in _memo:
+                _memo.add(module)
+                produced_data_types.update(
+                    module.get_produced_data_types(recursive, _memo)
+                )
+
+        return produced_data_types
+
+    def get_produced_data_types_mapping(
+        self, recursive: bool = True, _memo: Optional[Set] = None
+    ) -> Dict[Tuple[Type["Data"], ...], Tuple["Module", ...]]:
+        """
+        Get a mapping of data types to the modules that produce them.
+        """
+        if not recursive:
+            return {data_type: (self,) for data_type in self._producers.keys()}
+
+        if _memo is None:
+            _memo = set()
+
+        produced_data_types_mapping: Dict[
+            Tuple[Type["Data"], ...], Tuple["Module", ...]
+        ] = {data_type: (self,) for data_type in self._producers.keys()}
+
+        for module in self._modules:
+            if module not in _memo:
+                _memo.add(module)
+                submodule_mapping = module.get_produced_data_types_mapping(
+                    recursive, _memo
+                )
+                for data_type, submodule in submodule_mapping.items():
+                    if data_type not in produced_data_types_mapping:
+                        produced_data_types_mapping[data_type] = submodule
+                    else:
+                        # If the data type is already mapped, we merge them as a tuple
+                        existing_module = produced_data_types_mapping[data_type]
+                        produced_data_types_mapping[data_type] = (
+                            existing_module + submodule
+                        )
+
+        return produced_data_types_mapping
+
+    def get_consumed_data_types_mapping(
+        self, recursive: bool = True, _memo: Optional[Set] = None
+    ) -> Dict[Tuple[Type["Data"], ...], Tuple["Module", ...]]:
+        """
+        Get a mapping of data types to the modules that consume them.
+        """
+        if not recursive:
+            return {data_type: (self,) for data_type in self._consumers.keys()}
+
+        if _memo is None:
+            _memo = set()
+
+        consumed_data_types_mapping: Dict[
+            Tuple[Type["Data"], ...], Tuple["Module", ...]
+        ] = {data_type: (self,) for data_type in self._consumers.keys()}
+
+        for module in self._modules:
+            if module not in _memo:
+                _memo.add(module)
+                submodule_mapping = module.get_consumed_data_types_mapping(
+                    recursive, _memo
+                )
+                for data_type, submodule in submodule_mapping.items():
+                    if data_type not in consumed_data_types_mapping:
+                        consumed_data_types_mapping[data_type] = submodule
+                    else:
+                        # If the data type is already mapped, we merge them as a tuple
+                        existing_module = consumed_data_types_mapping[data_type]
+                        consumed_data_types_mapping[data_type] = (
+                            existing_module + submodule
+                        )
+
+        return consumed_data_types_mapping
+
+    def get_consumed_data_types(
+        self, recursive: bool = True, _memo: Optional[Set] = None
+    ):
+        """
+        Get all data types consumed by this module and its submodules.
+        """
+        if not recursive:
+            return set(self._consumers.keys())
+
+        if _memo is None:
+            _memo = set()
+
+        consumed_data_types = set(self._consumers.keys())
+
+        for module in self._modules:
+            if module not in _memo:
+                _memo.add(module)
+                consumed_data_types.update(
+                    module.get_consumed_data_types(recursive, _memo)
+                )
+
+        return consumed_data_types
+
     def add_method(
         self,
         method: Callable,
@@ -318,7 +432,7 @@ class Module:
         """
         Create a connection between producer and consumer modules for the specified data type.
         """
-        connection = Connection(producer, consumer, data, sync=sync)
+        connection = Connection(producer, consumer, data, sync=sync)  # type: ignore
         self._ensure_unique_connection(connection)
         self._connections.add(connection)
 
@@ -344,19 +458,19 @@ class Module:
                 removal = True
             elif (
                 producer is None
-                and is_equal_with_singleton(existing_connection.consumer, consumer)
+                and is_equal_with_singleton(existing_connection.consumers, consumer)
                 and is_equal_with_singleton(existing_connection.data, data)
             ):
                 removal = True
             elif (
-                is_equal_with_singleton(existing_connection.producer, producer)
+                is_equal_with_singleton(existing_connection.producers, producer)
                 and consumer is None
                 and is_equal_with_singleton(existing_connection.data, data)
             ):
                 removal = True
             elif (
-                is_equal_with_singleton(existing_connection.producer, producer)
-                and is_equal_with_singleton(existing_connection.consumer, consumer)
+                is_equal_with_singleton(existing_connection.producers, producer)
+                and is_equal_with_singleton(existing_connection.consumers, consumer)
                 and is_equal_with_singleton(existing_connection.data, data)
             ):
                 removal = True

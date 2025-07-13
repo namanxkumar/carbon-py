@@ -54,6 +54,8 @@ class ExecutionGraph:
             method: len(method.active_dependencies) for method in methods
         }
 
+        print(remaining_dependencies)
+
         layers: List[Set["DataMethod"]] = []
         layer_mapping: Dict["DataMethod", int] = {}
         process_layer_mapping: Dict[int, List[Set["DataMethod"]]] = {
@@ -75,7 +77,9 @@ class ExecutionGraph:
             ]
 
             if not current_level:
-                raise ValueError("Cycle detected in function dependencies")
+                raise ValueError(
+                    "Execution graph has cycles or unfulfilled dependencies."
+                )
 
             layers.append(set(current_level))
 

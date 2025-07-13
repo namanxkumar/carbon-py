@@ -13,10 +13,18 @@ class Robot(Module):
         self.wheelbase = WheelBase()
         self.teleop = Teleop()
 
-        self.create_connection(Twist, self.teleop, self.wheelbase.controller)
+        self.create_connection(Twist, self.teleop, self.wheelbase)
 
 
 robot = Robot()
+consumed_data = robot.get_consumed_data_types_mapping()
+for data_type, module in consumed_data.items():
+    print(data_type, "consumed by", module)
+print()
+produced_data = robot.get_produced_data_types_mapping()
+for data_type, module in produced_data.items():
+    print(data_type, "produced by", module)
+print()
 execution_graph = ExecutionGraph(robot)
 
 

@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Dict, Protocol, Sequence, Tuple, Type, Union
+from typing import Dict, List, Optional, Protocol, Sequence, Set, Tuple, Type, Union
 
 from carbon.core.datamethod import (
     DataMethod,
@@ -20,6 +20,14 @@ class ModuleLike(Protocol):
     _producers: Dict[Tuple[Type["Data"], ...], "DataMethod"]
     _consumers: Dict[Tuple[Type["Data"], ...], "DataMethod"]
 
+    def get_produced_data_types_mapping(
+        self, recursive: bool = True, _memo: Optional[Set] = None
+    ) -> Dict[Tuple[Type["Data"], ...], Tuple["ModuleLike", ...]]: ...
+
+    def get_consumed_data_types_mapping(
+        self, recursive: bool = True, _memo: Optional[Set] = None
+    ) -> Dict[Tuple[Type["Data"], ...], Tuple["ModuleLike", ...]]: ...
+
 
 class Connection:
     def __init__(
@@ -37,8 +45,8 @@ class Connection:
             "Use a single producer or consumer, or create a connection for each pair."
         )
 
-        self.producer = ensure_tuple_format(producer)
-        self.consumer = ensure_tuple_format(consumer)
+        self.producers = ensure_tuple_format(producer)
+        self.consumers = ensure_tuple_format(consumer)
         self.data = ensure_tuple_format(data)
         self.sync = sync
         self.active = True
@@ -46,50 +54,54 @@ class Connection:
         self.producer_methods: Tuple["DataMethod", ...]
         self.consumer_methods: Tuple["DataMethod", ...]
 
-        if len(self.producer) > 1 and len(self.producer) != len(self.data):
+        if len(self.producers) > 1 and len(self.producers) != len(self.data):
             raise ValueError(
                 "If multiple producers are provided, data must also be a sequence of the same length."
             )
-        elif len(self.consumer) > 1 and len(self.consumer) != len(self.data):
+        elif len(self.consumers) > 1 and len(self.consumers) != len(self.data):
             raise ValueError(
                 "If multiple consumers are provided, data must also be a sequence of the same length."
             )
 
-        if len(self.producer) > 1:
-            for src, dat in zip(self.producer, self.data):
-                assert ensure_tuple_format(dat) in src._producers, (
-                    f"Producer {src} must have data type {dat} defined in its producers."
+        if len(self.producers) > 1:
+            producer_modules: List["ModuleLike"] = []
+            for prd, dat in zip(self.producers, self.data):
+                producer_modules.append(
+                    self.retrieve_producer_module(ensure_tuple_format(dat), prd)
                 )
+            self.producers = tuple(producer_modules)
             self.producer_methods = tuple(
                 [
-                    src._producers[ensure_tuple_format(dat)]
-                    for src, dat in zip(self.producer, self.data)
+                    prd._producers[ensure_tuple_format(dat)]
+                    for prd, dat in zip(self.producers, self.data)
                 ]
             )
             self.type = ConnectionType.MERGE
-        elif len(self.producer) == 1:
-            assert self.data in self.producer[0]._producers, (
-                f"Producer {self.producer[0]} must have data type {self.data[0]} defined in its producers."
+        elif len(self.producers) == 1:
+            self.producers = ensure_tuple_format(
+                self.retrieve_producer_module(self.data, self.producers[0])
             )
-            self.producer_methods = tuple([self.producer[0]._producers[self.data]])
+            self.producer_methods = tuple([self.producers[0]._producers[self.data]])
 
-        if len(self.consumer) > 1:
-            for snk, dat in zip(self.consumer, self.data):
-                assert ensure_tuple_format(dat) in snk._consumers, (
-                    f"Consumer {snk} must have data type {dat} defined in its consumers."
+        if len(self.consumers) > 1:
+            consumer_modules: List["ModuleLike"] = []
+            for csm, dat in zip(self.consumers, self.data):
+                consumer_modules.append(
+                    self.retrieve_consumer_module(ensure_tuple_format(dat), csm)
                 )
+            self.consumers = tuple(consumer_modules)
             self.consumer_methods = tuple(
                 [
-                    snk._consumers[ensure_tuple_format(dat)]
-                    for snk, dat in zip(self.consumer, self.data)
+                    csm._consumers[ensure_tuple_format(dat)]
+                    for csm, dat in zip(self.consumers, self.data)
                 ]
             )
             self.type = ConnectionType.SPLIT
-        elif len(self.consumer) == 1:
-            assert self.data in self.consumer[0]._consumers, (
-                f"Consumer {self.consumer[0]} must have data type {self.data[0]} defined in its consumers."
+        elif len(self.consumers) == 1:
+            self.consumers = ensure_tuple_format(
+                self.retrieve_consumer_module(self.data, self.consumers[0])
             )
-            self.consumer_methods = tuple([self.consumer[0]._consumers[self.data]])
+            self.consumer_methods = tuple([self.consumers[0]._consumers[self.data]])
 
         for producer_index, producer_method in enumerate(self.producer_methods):
             for consumer_index, consumer_method in enumerate(self.consumer_methods):
@@ -116,6 +128,30 @@ class Connection:
                     ),
                 )
 
+    def retrieve_producer_module(self, dat: Tuple[Type[Data], ...], prd: "ModuleLike"):
+        src_producers = prd.get_produced_data_types_mapping(recursive=True)
+        producer_module = src_producers.get(ensure_tuple_format(dat), None)
+        if producer_module is None or len(producer_module) == 0:
+            raise ValueError(f"Producer {prd} does not produce data type {dat}.")
+        if len(producer_module) > 1:
+            raise ValueError(
+                f"Producer {prd} produces data type {dat} from multiple modules: {producer_module}."
+                "Please specify a single producer module."
+            )
+        return producer_module[0]
+
+    def retrieve_consumer_module(self, dat: Tuple[Type[Data], ...], csm: "ModuleLike"):
+        snk_consumers = csm.get_consumed_data_types_mapping(recursive=True)
+        consumer_module = snk_consumers.get(dat, None)
+        if consumer_module is None or len(consumer_module) == 0:
+            raise ValueError(f"Consumer {csm} does not consume data type {dat}.")
+        if len(consumer_module) > 1:
+            raise ValueError(
+                f"Consumer {csm} consumes data type {dat} from multiple modules: {consumer_module}."
+                "Please specify a single consumer module."
+            )
+        return consumer_module[0]
+
     def block(self):
         """Block the connection, preventing data from being sent."""
         self.active = False
@@ -125,18 +161,18 @@ class Connection:
                 producer_method.block_dependent(consumer_method)
 
     def __hash__(self):
-        return hash((self.producer, self.consumer, self.data))
+        return hash((self.producers, self.consumers, self.data))
 
     def __eq__(self, other):
         return (
             isinstance(other, Connection)
-            and self.producer == other.producer
-            and self.consumer == other.consumer
+            and self.producers == other.producers
+            and self.consumers == other.consumers
             and self.data == other.data
         )
 
     def __repr__(self):
         return (
-            f"Connection(producer={self.producer}, consumer={self.consumer}, "
+            f"Connection(producer={self.producers}, consumer={self.consumers}, "
             f"data={self.data}, sync={self.sync}"
         )

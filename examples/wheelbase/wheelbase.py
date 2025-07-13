@@ -33,6 +33,7 @@ class WheelBase(Module):
         # self.block_connection(producer=None, consumer=None, data=Transform)
 
         self.controller = DifferentialDriveController(open_loop=True)
+
         self.create_connection(
             (Position, Position), self.controller, (self.left_motor, self.right_motor)
         )
