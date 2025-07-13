@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 
 from carbon.common_data_types import Position
 from carbon.core import Module, ModuleReference, consumer, producer
-from carbon.data import Autofill, StampedData
+from carbon.data import StampedData
 
 
 class Transform(StampedData):
@@ -22,7 +22,6 @@ class Joint(Module, ABC):
         self.child = child
 
         self._transform = Transform(
-            header=Autofill(),
             translation=(0.0, 0.0, 0.0),  # Placeholder for translation
             rotation=(
                 0.0,

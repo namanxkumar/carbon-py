@@ -1,7 +1,6 @@
 import sys
-import types
 from dataclasses import dataclass
-from typing import Any, Dict, List, Union, cast, get_args, get_origin
+from typing import Any, Dict, List, cast, get_args, get_origin
 
 import pyarrow as pa
 
@@ -11,7 +10,7 @@ else:
     from typing_extensions import dataclass_transform
 
 
-@dataclass_transform()
+@dataclass_transform(kw_only_default=True)
 class DataMeta(type):
     """
     Metaclass for Data class to handle type annotations and schema generation.
@@ -63,7 +62,8 @@ class DataMeta(type):
             cast(
                 type,
                 new_cls,
-            )
+            ),
+            kw_only=True,
         )
 
     def __repr__(cls):
@@ -87,8 +87,6 @@ def _generate_arrow_field_from_primitive_annotation(name, annotation: type):
         return pa.field(name, pa.string())
     elif annotation is bool:
         return pa.field(name, pa.bool_())
-    elif annotation is timestamp:
-        return pa.field(name, pa.timestamp("ns"))
     elif issubclass(annotation, pa.DataType):
         return pa.field(name, annotation)
     else:
@@ -129,21 +127,21 @@ def generate_arrow_schema(attrs):
                     ),
                 )
             )
-        elif (type(annotation) is types.UnionType) or (get_origin(annotation) is Union):
-            union_types = get_args(annotation)
-            non_none_types = [
-                t
-                for t in union_types
-                if (isinstance(t, tuple(SUPPORTED_TYPES)) or hasattr(t, "_schema"))
-            ]
-            if len(non_none_types) == 1:
-                fields.append(
-                    _generate_arrow_field_from_primitive_annotation(
-                        name, non_none_types[0]
-                    )
-                )
-            else:
-                raise TypeError(f"Unsupported Union type: {annotation}")
+        # elif (type(annotation) is types.UnionType) or (get_origin(annotation) is Union):
+        #     union_types = get_args(annotation)
+        #     non_none_types = [
+        #         t
+        #         for t in union_types
+        #         if (isinstance(t, tuple(SUPPORTED_TYPES)) or hasattr(t, "_schema"))
+        #     ]
+        #     if len(non_none_types) == 1:
+        #         fields.append(
+        #             _generate_arrow_field_from_primitive_annotation(
+        #                 name, non_none_types[0]
+        #             )
+        #         )
+        #     else:
+        #         raise TypeError(f"Unsupported Union type: {annotation}")
         elif isinstance(annotation, type):
             fields.append(
                 _generate_arrow_field_from_primitive_annotation(name, annotation)

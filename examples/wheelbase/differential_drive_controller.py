@@ -1,7 +1,6 @@
 from typing import Optional, Tuple
 
 from carbon import (
-    Autofill,
     ConfiguredType,
     Module,
     consumer,
@@ -36,14 +35,8 @@ class DifferentialDriveController(Module):
         right_velocity = twist_command.linear.x + twist_command.angular.z
 
         return (
-            Velocity(
-                header=Autofill(),
-                velocity=Vector3(x=left_velocity, y=0.0, z=0.0),
-            ),
-            Velocity(
-                header=Autofill(),
-                velocity=Vector3(x=right_velocity, y=0.0, z=0.0),
-            ),
+            Velocity(velocity=Vector3(x=left_velocity, y=0.0, z=0.0)),
+            Velocity(velocity=Vector3(x=right_velocity, y=0.0, z=0.0)),
         )
 
     def update_joint_positions(
@@ -52,8 +45,8 @@ class DifferentialDriveController(Module):
         print("Updating joint positions in open loop")
         if self._previous_timestamp is None:
             return (
-                Position(header=Autofill(), position=Vector3(x=0.0, y=0.0, z=0.0)),
-                Position(header=Autofill(), position=Vector3(x=0.0, y=0.0, z=0.0)),
+                Position(position=Vector3(x=0.0, y=0.0, z=0.0)),
+                Position(position=Vector3(x=0.0, y=0.0, z=0.0)),
             )
         assert self._previous_positions is not None, "Previous positions must be set."
 
@@ -72,12 +65,6 @@ class DifferentialDriveController(Module):
         )
 
         return (
-            Position(
-                header=Autofill(),
-                position=self._previous_positions[0],
-            ),
-            Position(
-                header=Autofill(),
-                position=self._previous_positions[1],
-            ),
+            Position(position=self._previous_positions[0]),
+            Position(position=self._previous_positions[1]),
         )

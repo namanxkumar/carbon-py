@@ -1,5 +1,5 @@
 from carbon.core import Module, consumer, safe_print
-from carbon.data import Autofill, Data, StampedData
+from carbon.data import Data, StampedData
 from carbon.transforms.joints import Transform
 
 
@@ -55,7 +55,6 @@ class Link(Module):
         self.geometry = geometry  # Geometry of the link
 
         self.pose = Pose(
-            header=Autofill(),
             position=(0.0, 0.0, 0.0),  # Placeholder for position
             orientation=(
                 0.0,

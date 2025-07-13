@@ -7,4 +7,4 @@ from carbon.core import (
     producer,
     safe_print,
 )
-from carbon.data import Autofill, Data, Header, StampedData
+from carbon.data import Data, Header, StampedData

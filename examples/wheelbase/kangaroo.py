@@ -2,7 +2,6 @@ from typing import Tuple
 
 from carbon.common_data_types import Position, Vector3, Velocity
 from carbon.core import Module, consumer, producer, safe_print
-from carbon.data import Autofill
 
 
 class KangarooDriver(Module):
@@ -24,11 +23,7 @@ class KangarooDriver(Module):
 
         # This method would typically read from encoders to get the current position of the wheels
         # For this example, we will return dummy positions
-        left_position = Position(
-            header=Autofill(), position=Vector3(x=0.0, y=0.0, z=0.0)
-        )
-        right_position = Position(
-            header=Autofill(), position=Vector3(x=0.0, y=0.0, z=0.0)
-        )
+        left_position = Position(position=Vector3(x=0.0, y=0.0, z=0.0))
+        right_position = Position(position=Vector3(x=0.0, y=0.0, z=0.0))
         # safe_print(f"Getting encoder feedback: {left_position}, {right_position}")
         return left_position, right_position

@@ -14,7 +14,7 @@ class Quaternion(Data):
     w: float
 
 
-class Twist(Data):
+class Twist(StampedData):
     linear: Vector3
     angular: Vector3
 

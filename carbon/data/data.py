@@ -1,5 +1,4 @@
-import types
-from dataclasses import Field
+from dataclasses import Field, field
 from time import time
 from typing import Dict, Type, Union, cast, get_args, get_origin
 
@@ -8,14 +7,6 @@ import pyarrow as pa
 from carbon.data.utilities import DataMeta, flatten_single_row_arrow_dict
 
 QueueItem = Union["Data", "pa.Table"]
-
-
-class Autofill:
-    """
-    Marker class for fields that should be automatically filled in by the framework.
-    """
-
-    pass
 
 
 class Data(metaclass=DataMeta):
@@ -123,21 +114,21 @@ class Data(metaclass=DataMeta):
                     else value.get(f"item_{i}")
                     for i, item_type in enumerate(item_types)
                 )
-            elif isinstance(field_type, types.UnionType) or (
-                get_origin(field_type) is Union
-            ):
-                union_types = get_args(field_type)
-                non_none_types = [t for t in union_types if t is not Autofill]
-                if len(non_none_types) == 1:
-                    item_type = non_none_types[0]
-                    if isinstance(value, dict) and issubclass(item_type, Data):
-                        arrow_dict[field_name] = item_type._from_arrow_compatible_dict(
-                            value
-                        )
-                    else:
-                        arrow_dict[field_name] = value
-                else:
-                    raise TypeError(f"Unsupported Union type: {field_type}")
+            # elif isinstance(field_type, types.UnionType) or (
+            #     get_origin(field_type) is Union
+            # ):
+            #     union_types = get_args(field_type)
+            #     non_none_types = [t for t in union_types if t is not Autofill]
+            #     if len(non_none_types) == 1:
+            #         item_type = non_none_types[0]
+            #         if isinstance(value, dict) and issubclass(item_type, Data):
+            #             arrow_dict[field_name] = item_type._from_arrow_compatible_dict(
+            #                 value
+            #             )
+            #         else:
+            #             arrow_dict[field_name] = value
+            #     else:
+            #         raise TypeError(f"Unsupported Union type: {field_type}")
             elif isinstance(field_type, type) and issubclass(field_type, Data):
                 if isinstance(value, dict):
                     arrow_dict[field_name] = field_type._from_arrow_compatible_dict(
@@ -175,53 +166,53 @@ class Data(metaclass=DataMeta):
             flatten_single_row_arrow_dict(arrow_data.to_pydict())
         )
 
-    def _get_autofill_fields(self, field_type: type):
-        """
-        Autofill fields that are marked with Autofill.
-        This method can be overridden in subclasses to provide custom autofill logic.
-        """
-        if field_type is Header:
-            # Example autofill logic for Header
-            return Header(time=time())
-        else:
-            raise NotImplementedError(
-                f"Autofill logic not implemented for field type: {field_type.__name__}"
-            )
+    # def _get_autofill_fields(self, field_type: type):
+    #     """
+    #     Autofill fields that are marked with Autofill.
+    #     This method can be overridden in subclasses to provide custom autofill logic.
+    #     """
+    #     if field_type is Header:
+    #         # Example autofill logic for Header
+    #         return Header(time=time())
+    #     else:
+    #         raise NotImplementedError(
+    #             f"Autofill logic not implemented for field type: {field_type.__name__}"
+    #         )
 
-    def __post_init__(self):
-        """
-        Post-initialization hook for Data classes.
-        This can still be overridden in subclasses to add custom initialization logic, however
-        this implementation will always run first to ensure the base class is initialized.
-        """
-        for field_name, field_value in self.__dict__.items():
-            if not isinstance(field_value, Autofill):
-                continue
+    # def __post_init__(self):
+    #     """
+    #     Post-initialization hook for Data classes.
+    #     This can still be overridden in subclasses to add custom initialization logic, however
+    #     this implementation will always run first to ensure the base class is initialized.
+    #     """
+    #     for field_name, field_value in self.__dict__.items():
+    #         if not isinstance(field_value, Autofill):
+    #             continue
 
-            field_type = cast(
-                type,
-                cast(
-                    Field,
-                    cast(Dict, getattr(self.__class__, "__dataclass_fields__")).get(
-                        field_name
-                    ),
-                ).type,
-            )
+    #         field_type = cast(
+    #             type,
+    #             cast(
+    #                 Field,
+    #                 cast(Dict, getattr(self.__class__, "__dataclass_fields__")).get(
+    #                     field_name
+    #                 ),
+    #             ).type,
+    #         )
 
-            assert isinstance(field_type, types.UnionType) or (
-                hasattr(field_type, "__origin__") and field_type.__origin__ is Union
-            ), (
-                f"Field '{field_name}' must be a Union type with Autofill and the type to be autofilled."
-            )
+    #         assert isinstance(field_type, types.UnionType) or (
+    #             hasattr(field_type, "__origin__") and field_type.__origin__ is Union
+    #         ), (
+    #             f"Field '{field_name}' must be a Union type with Autofill and the type to be autofilled."
+    #         )
 
-            non_none_types = [t for t in field_type.__args__ if t is not Autofill]
+    #         non_none_types = [t for t in field_type.__args__ if t is not Autofill]
 
-            if len(non_none_types) == 1:
-                field_type = non_none_types[0]
-            else:
-                raise TypeError(f"Unsupported Union type: {field_type}")
+    #         if len(non_none_types) == 1:
+    #             field_type = non_none_types[0]
+    #         else:
+    #             raise TypeError(f"Unsupported Union type: {field_type}")
 
-            self.__dict__[field_name] = self._get_autofill_fields(field_type=field_type)
+    #         self.__dict__[field_name] = self._get_autofill_fields(field_type=field_type)
 
     def export_to_queue_format(self) -> QueueItem:
         """
@@ -288,4 +279,4 @@ class Header(Data):
 
 
 class StampedData(Data):
-    header: Union[Header, Autofill]
+    header: Header = field(default=Header(time=time()))
