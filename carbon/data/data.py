@@ -1,5 +1,6 @@
 import types
 from dataclasses import Field
+from time import time
 from typing import Dict, Type, Union, cast, get_args, get_origin
 
 import pyarrow as pa
@@ -181,7 +182,7 @@ class Data(metaclass=DataMeta):
         """
         if field_type is Header:
             # Example autofill logic for Header
-            return Header(seq=0, stamp=0.0, frame_id="default_frame")
+            return Header(time=time())
         else:
             raise NotImplementedError(
                 f"Autofill logic not implemented for field type: {field_type.__name__}"
@@ -283,9 +284,7 @@ class DataQueue:
 
 
 class Header(Data):
-    seq: int
-    stamp: float
-    frame_id: str
+    time: float
 
 
 class StampedData(Data):

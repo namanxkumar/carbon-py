@@ -87,6 +87,8 @@ def _generate_arrow_field_from_primitive_annotation(name, annotation: type):
         return pa.field(name, pa.string())
     elif annotation is bool:
         return pa.field(name, pa.bool_())
+    elif annotation is timestamp:
+        return pa.field(name, pa.timestamp("ns"))
     elif issubclass(annotation, pa.DataType):
         return pa.field(name, annotation)
     else:
